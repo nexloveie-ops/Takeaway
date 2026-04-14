@@ -66,22 +66,39 @@ export function createOrdersRouter(io: SocketIOServer): Router {
       const menuItemMap = new Map(menuItems.map((m) => [m._id.toString(), m]));
 
       // Build order items with price/name snapshots
-      const orderItems = items.map((item: { menuItemId: string; quantity: number }) => {
+      const orderItems = items.map((item: { menuItemId: string; quantity: number; selectedOptions?: { groupId: string; choiceId: string }[] }) => {
         const menuItem = menuItemMap.get(item.menuItemId)!;
         // Use first translation name as snapshot, fallback to 'Unknown'
         const itemName =
           menuItem.translations && menuItem.translations.length > 0
             ? menuItem.translations[0].name
             : 'Unknown';
+
+        // Resolve selectedOptions from menuItem's optionGroups
+        const selectedOptions: { groupName: string; choiceName: string; extraPrice: number }[] = [];
+        if (item.selectedOptions && Array.isArray(item.selectedOptions)) {
+          const groups = (menuItem as unknown as { optionGroups?: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; choices: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; extraPrice: number }[] }[] }).optionGroups || [];
+          for (const sel of item.selectedOptions) {
+            const group = groups.find((g) => g._id.toString() === sel.groupId);
+            if (group) {
+              const choice = group.choices.find((c) => c._id.toString() === sel.choiceId);
+              if (choice) {
+                const groupName = group.translations && group.translations.length > 0 ? group.translations[0].name : '';
+                const choiceName = choice.translations && choice.translations.length > 0 ? choice.translations[0].name : '';
+                selectedOptions.push({ groupName, choiceName, extraPrice: choice.extraPrice || 0 });
+              }
+            }
+          }
+        }
+
         return {
           menuItemId: item.menuItemId,
           quantity: item.quantity,
           unitPrice: menuItem.price,
           itemName,
+          selectedOptions,
         };
       });
-
-      // Create the order
       const orderData: Record<string, unknown> = {
         type,
         status: 'pending',
@@ -255,17 +272,36 @@ export function createOrdersRouter(io: SocketIOServer): Router {
       const menuItemMap = new Map(menuItems.map((m) => [m._id.toString(), m]));
 
       // Build updated order items with price/name snapshots
-      const orderItems = items.map((item: { menuItemId: string; quantity: number }) => {
+      const orderItems = items.map((item: { menuItemId: string; quantity: number; selectedOptions?: { groupId: string; choiceId: string }[] }) => {
         const menuItem = menuItemMap.get(item.menuItemId)!;
         const itemName =
           menuItem.translations && menuItem.translations.length > 0
             ? menuItem.translations[0].name
             : 'Unknown';
+
+        // Resolve selectedOptions from menuItem's optionGroups
+        const selectedOptions: { groupName: string; choiceName: string; extraPrice: number }[] = [];
+        if (item.selectedOptions && Array.isArray(item.selectedOptions)) {
+          const groups = (menuItem as unknown as { optionGroups?: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; choices: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; extraPrice: number }[] }[] }).optionGroups || [];
+          for (const sel of item.selectedOptions) {
+            const group = groups.find((g) => g._id.toString() === sel.groupId);
+            if (group) {
+              const choice = group.choices.find((c) => c._id.toString() === sel.choiceId);
+              if (choice) {
+                const groupName = group.translations && group.translations.length > 0 ? group.translations[0].name : '';
+                const choiceName = choice.translations && choice.translations.length > 0 ? choice.translations[0].name : '';
+                selectedOptions.push({ groupName, choiceName, extraPrice: choice.extraPrice || 0 });
+              }
+            }
+          }
+        }
+
         return {
           menuItemId: item.menuItemId,
           quantity: item.quantity,
           unitPrice: menuItem.price,
           itemName,
+          selectedOptions,
         };
       });
 

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useCart } from '../../context/CartContext';
 
 export default function CartPage() {
-  const { items, increaseQuantity, decreaseQuantity, removeItem, clearCart, totalAmount, totalItems } = useCart();
+  const { items, increaseQuantity, decreaseQuantity, removeItem, clearCart, totalAmount, totalItems, getItemKey } = useCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
@@ -24,7 +24,13 @@ export default function CartPage() {
     setError('');
     try {
       const body: Record<string, unknown> = {
-        items: items.map(i => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+        items: items.map(i => {
+          const item: Record<string, unknown> = { menuItemId: i.menuItemId, quantity: i.quantity };
+          if (i.options && i.options.length > 0) {
+            item.selectedOptions = i.options.map(o => ({ groupId: o.groupId, choiceId: o.choiceId }));
+          }
+          return item;
+        }),
       };
       if (orderType === 'takeout') {
         body.type = 'takeout';
@@ -72,39 +78,54 @@ export default function CartPage() {
       </h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map(item => (
-          <div key={item.menuItemId} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: 'var(--bg-white)', borderRadius: 10, padding: '12px 14px',
-            border: '1px solid rgba(232,213,184,0.5)',
-          }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-dark)' }}>{getItemName(item.names)}</div>
-              <div style={{ fontSize: 13, color: 'var(--red-primary)', fontWeight: 600, fontFamily: "'Noto Serif SC', serif" }}>
-                €{item.price}
-              </div>
-            </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden',
+        {items.map(item => {
+          const key = getItemKey(item);
+          const optExtra = (item.options || []).reduce((s, o) => s + o.extraPrice, 0);
+          return (
+            <div key={key} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: 'var(--bg-white)', borderRadius: 10, padding: '12px 14px',
+              border: '1px solid rgba(232,213,184,0.5)',
             }}>
-              <button onClick={() => decreaseQuantity(item.menuItemId)} style={{
-                width: 34, height: 34, background: 'var(--bg)', fontSize: 16, fontWeight: 700,
-                color: 'var(--red-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>−</button>
-              <span style={{ width: 34, textAlign: 'center', fontSize: 14, fontWeight: 700 }}>{item.quantity}</span>
-              <button onClick={() => increaseQuantity(item.menuItemId)} style={{
-                width: 34, height: 34, background: 'var(--bg)', fontSize: 16, fontWeight: 700,
-                color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>+</button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-dark)' }}>{getItemName(item.names)}</div>
+                {item.options && item.options.length > 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>
+                    {item.options.map((o, i) => (
+                      <span key={i}>
+                        {i > 0 && ' · '}
+                        {o.groupName[lang] || Object.values(o.groupName)[0]}: {o.choiceName[lang] || Object.values(o.choiceName)[0]}
+                        {o.extraPrice > 0 && ` +€${o.extraPrice}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 13, color: 'var(--red-primary)', fontWeight: 600, fontFamily: "'Noto Serif SC', serif" }}>
+                  €{item.price}{optExtra > 0 && ` +€${optExtra}`}
+                </div>
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden',
+              }}>
+                <button onClick={() => decreaseQuantity(key)} style={{
+                  width: 34, height: 34, background: 'var(--bg)', fontSize: 16, fontWeight: 700,
+                  color: 'var(--red-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>−</button>
+                <span style={{ width: 34, textAlign: 'center', fontSize: 14, fontWeight: 700 }}>{item.quantity}</span>
+                <button onClick={() => increaseQuantity(key)} style={{
+                  width: 34, height: 34, background: 'var(--bg)', fontSize: 16, fontWeight: 700,
+                  color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>+</button>
+              </div>
+              <div style={{ fontWeight: 700, color: 'var(--red-primary)', minWidth: 50, textAlign: 'right', fontFamily: "'Noto Serif SC', serif" }}>
+                €{((item.price + optExtra) * item.quantity).toFixed(2)}
+              </div>
+              <button onClick={() => removeItem(key)} style={{
+                background: 'none', color: 'var(--text-light)', fontSize: 18, padding: 4,
+              }}>✕</button>
             </div>
-            <div style={{ fontWeight: 700, color: 'var(--red-primary)', minWidth: 50, textAlign: 'right', fontFamily: "'Noto Serif SC', serif" }}>
-              €{item.price * item.quantity}
-            </div>
-            <button onClick={() => removeItem(item.menuItemId)} style={{
-              background: 'none', color: 'var(--text-light)', fontSize: 18, padding: 4,
-            }}>✕</button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {error && <div style={{ color: 'var(--red-primary)', marginTop: 12, fontSize: 13 }}>{error}</div>}
@@ -118,7 +139,7 @@ export default function CartPage() {
       }}>
         <div>
           <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{t('customer.totalAmount')} · {totalItems} {t('customer.quantity')}</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--red-primary)', fontFamily: "'Noto Serif SC', serif" }}>€{totalAmount}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--red-primary)', fontFamily: "'Noto Serif SC', serif" }}>€{totalAmount.toFixed(2)}</div>
         </div>
         <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}
           style={{ padding: '12px 28px', fontSize: 15, letterSpacing: 1 }}>

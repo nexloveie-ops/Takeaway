@@ -5,13 +5,19 @@ import { useAuth } from '../../context/AuthContext';
 interface Translation { locale: string; name: string; description?: string; }
 interface Category { _id: string; translations: Translation[]; }
 interface AllergenData { _id: string; name: string; icon: string; translations: { locale: string; name: string }[]; }
+interface OptionChoiceData { _id?: string; extraPrice: number; translations: { locale: string; name: string }[]; }
+interface OptionGroupData { _id?: string; required: boolean; translations: { locale: string; name: string }[]; choices: OptionChoiceData[]; }
 interface MenuItem {
   _id: string; categoryId: string; price: number; calories?: number;
   avgWaitMinutes?: number; photoUrl?: string; arFileUrl?: string;
   isSoldOut?: boolean; translations: Translation[]; allergenIds?: string[];
+  optionGroups?: OptionGroupData[];
 }
 
-const emptyForm = { categoryId: '', price: 0, calories: 0, avgWaitMinutes: 0, nameZh: '', nameEn: '', descZh: '', descEn: '', allergenIds: [] as string[] };
+interface FormOptionChoice { nameZh: string; nameEn: string; extraPrice: number; }
+interface FormOptionGroup { nameZh: string; nameEn: string; required: boolean; choices: FormOptionChoice[]; }
+
+const emptyForm = { categoryId: '', price: 0, calories: 0, avgWaitMinutes: 0, nameZh: '', nameEn: '', descZh: '', descEn: '', allergenIds: [] as string[], optionGroups: [] as FormOptionGroup[] };
 
 export default function MenuItemManager() {
   const { t } = useTranslation();
@@ -41,6 +47,16 @@ export default function MenuItemManager() {
 
   const startEdit = (item: MenuItem | null) => {
     if (item) {
+      const optionGroups: FormOptionGroup[] = (item.optionGroups || []).map(g => ({
+        nameZh: g.translations.find(t2 => t2.locale === 'zh-CN')?.name || '',
+        nameEn: g.translations.find(t2 => t2.locale === 'en-US')?.name || '',
+        required: g.required,
+        choices: g.choices.map(c => ({
+          nameZh: c.translations.find(t2 => t2.locale === 'zh-CN')?.name || '',
+          nameEn: c.translations.find(t2 => t2.locale === 'en-US')?.name || '',
+          extraPrice: c.extraPrice,
+        })),
+      }));
       setForm({
         categoryId: item.categoryId,
         price: item.price,
@@ -51,6 +67,7 @@ export default function MenuItemManager() {
         descZh: item.translations.find(t2 => t2.locale === 'zh-CN')?.description || '',
         descEn: item.translations.find(t2 => t2.locale === 'en-US')?.description || '',
         allergenIds: item.allergenIds || [],
+        optionGroups,
       });
       setEditingId(item._id);
     } else {
@@ -69,6 +86,20 @@ export default function MenuItemManager() {
         { locale: 'zh-CN', name: form.nameZh, description: form.descZh },
         { locale: 'en-US', name: form.nameEn, description: form.descEn },
       ],
+      optionGroups: form.optionGroups.map(g => ({
+        required: g.required,
+        translations: [
+          { locale: 'zh-CN', name: g.nameZh },
+          { locale: 'en-US', name: g.nameEn },
+        ],
+        choices: g.choices.map(c => ({
+          extraPrice: c.extraPrice,
+          translations: [
+            { locale: 'zh-CN', name: c.nameZh },
+            { locale: 'en-US', name: c.nameEn },
+          ],
+        })),
+      })),
     };
     if (editingId) {
       await fetch(`/api/menu/items/${editingId}`, { method: 'PUT', headers, body: JSON.stringify(body) });
@@ -100,6 +131,52 @@ export default function MenuItemManager() {
   const getCatName = (catId: string) => {
     const cat = categories.find(c => c._id === catId);
     return cat?.translations.find(t2 => t2.locale === 'zh-CN')?.name || '';
+  };
+
+  // Option group helpers
+  const addOptionGroup = () => {
+    setForm(prev => ({
+      ...prev,
+      optionGroups: [...prev.optionGroups, { nameZh: '', nameEn: '', required: false, choices: [{ nameZh: '', nameEn: '', extraPrice: 0 }] }],
+    }));
+  };
+
+  const removeOptionGroup = (gi: number) => {
+    setForm(prev => ({ ...prev, optionGroups: prev.optionGroups.filter((_, i) => i !== gi) }));
+  };
+
+  const updateOptionGroup = (gi: number, field: string, value: unknown) => {
+    setForm(prev => ({
+      ...prev,
+      optionGroups: prev.optionGroups.map((g, i) => i === gi ? { ...g, [field]: value } : g),
+    }));
+  };
+
+  const addChoice = (gi: number) => {
+    setForm(prev => ({
+      ...prev,
+      optionGroups: prev.optionGroups.map((g, i) =>
+        i === gi ? { ...g, choices: [...g.choices, { nameZh: '', nameEn: '', extraPrice: 0 }] } : g
+      ),
+    }));
+  };
+
+  const removeChoice = (gi: number, ci: number) => {
+    setForm(prev => ({
+      ...prev,
+      optionGroups: prev.optionGroups.map((g, i) =>
+        i === gi ? { ...g, choices: g.choices.filter((_, j) => j !== ci) } : g
+      ),
+    }));
+  };
+
+  const updateChoice = (gi: number, ci: number, field: string, value: unknown) => {
+    setForm(prev => ({
+      ...prev,
+      optionGroups: prev.optionGroups.map((g, i) =>
+        i === gi ? { ...g, choices: g.choices.map((c, j) => j === ci ? { ...c, [field]: value } : c) } : g
+      ),
+    }));
   };
 
   return (
@@ -178,6 +255,59 @@ export default function MenuItemManager() {
               </div>
             </div>
           )}
+
+          {/* Option Groups Section */}
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <label style={{ fontSize: 13, fontWeight: 700 }}>{t('admin.optionGroups')}</label>
+              <button className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px' }} onClick={addOptionGroup}>
+                + {t('admin.addOptionGroup')}
+              </button>
+            </div>
+            {form.optionGroups.map((group, gi) => (
+              <div key={gi} style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, marginBottom: 10, border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{t('admin.optionGroups')} #{gi + 1}</span>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, color: 'var(--red-primary)', padding: '2px 6px' }} onClick={() => removeOptionGroup(gi)}>
+                    {t('common.delete')}
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--text-light)' }}>{t('admin.groupName')} (中文)</label>
+                    <input className="input" value={group.nameZh} onChange={e => updateOptionGroup(gi, 'nameZh', e.target.value)} style={{ width: '100%' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--text-light)' }}>{t('admin.groupName')} (EN)</label>
+                    <input className="input" value={group.nameEn} onChange={e => updateOptionGroup(gi, 'nameEn', e.target.value)} style={{ width: '100%' }} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={group.required} onChange={e => updateOptionGroup(gi, 'required', e.target.checked)} />
+                      {t('admin.required')}
+                    </label>
+                  </div>
+                </div>
+                {/* Choices */}
+                {group.choices.map((choice, ci) => (
+                  <div key={ci} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px auto', gap: 6, marginBottom: 4 }}>
+                    <input className="input" placeholder={`${t('admin.choiceName')} (中文)`} value={choice.nameZh}
+                      onChange={e => updateChoice(gi, ci, 'nameZh', e.target.value)} style={{ fontSize: 12 }} />
+                    <input className="input" placeholder={`${t('admin.choiceName')} (EN)`} value={choice.nameEn}
+                      onChange={e => updateChoice(gi, ci, 'nameEn', e.target.value)} style={{ fontSize: 12 }} />
+                    <input className="input" type="number" placeholder={t('admin.extraPrice')} value={choice.extraPrice}
+                      onChange={e => updateChoice(gi, ci, 'extraPrice', Number(e.target.value))} style={{ fontSize: 12 }} />
+                    <button className="btn btn-ghost" style={{ fontSize: 14, color: 'var(--red-primary)', padding: '0 4px' }}
+                      onClick={() => removeChoice(gi, ci)}>✕</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost" style={{ fontSize: 11, marginTop: 4 }} onClick={() => addChoice(gi)}>
+                  + {t('admin.addChoice')}
+                </button>
+              </div>
+            ))}
+          </div>
+
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button className="btn btn-primary" onClick={handleSave}>{t('common.save')}</button>
             <button className="btn btn-outline" onClick={() => setShowForm(false)}>{t('common.cancel')}</button>
@@ -218,6 +348,11 @@ export default function MenuItemManager() {
                 <td style={{ padding: '8px 12px' }}>
                   <div style={{ fontWeight: 600 }}>{item.translations.find(t2 => t2.locale === 'zh-CN')?.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{item.translations.find(t2 => t2.locale === 'en-US')?.name}</div>
+                  {item.optionGroups && item.optionGroups.length > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 2 }}>
+                      ⚙ {item.optionGroups.length} {t('admin.optionGroups').toLowerCase()}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{getCatName(item.categoryId)}</td>
                 <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--red-primary)' }}>€{item.price}</td>

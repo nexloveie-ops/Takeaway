@@ -55,7 +55,9 @@
     "updateSuccess": "订单修改成功",
     "updateFailed": "订单修改失败",
     "expand": "展开",
-    "collapse": "收起"
+    "collapse": "收起",
+    "selectOptions": "选择选项",
+    "confirmAdd": "确认添加"
   },
   "cashier": {
     "title": "收银台",
@@ -102,7 +104,14 @@
     "allergens": "过敏原管理",
     "allergenName": "过敏原名称",
     "allergenIcon": "图标",
-    "allergenInUse": "该过敏原正在被菜品使用，无法删除"
+    "allergenInUse": "该过敏原正在被菜品使用，无法删除",
+    "optionGroups": "选项组",
+    "addOptionGroup": "添加选项组",
+    "addChoice": "添加选项",
+    "groupName": "选项组名称",
+    "choiceName": "选项名称",
+    "extraPrice": "加价",
+    "required": "必选"
   },
   "receipt": {
     "title": "消费小票",

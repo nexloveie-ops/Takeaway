@@ -11,6 +11,11 @@ interface MenuItemData {
   avgWaitMinutes?: number; photoUrl?: string; arFileUrl?: string; isSoldOut?: boolean;
   translations: { locale: string; name: string; description?: string }[];
   allergenIds?: string[];
+  optionGroups?: {
+    _id: string; required: boolean;
+    translations: { locale: string; name: string }[];
+    choices: { _id: string; extraPrice: number; translations: { locale: string; name: string }[] }[];
+  }[];
 }
 
 export default function MenuView() {
@@ -183,6 +188,7 @@ export default function MenuView() {
                     arFileUrl={item.arFileUrl}
                     isSoldOut={item.isSoldOut}
                     allergenIcons={(item.allergenIds || []).map(aid => allergens.find(a => a._id === aid)?.icon).filter((x): x is string => !!x)}
+                    optionGroups={item.optionGroups}
                     onAdd={addItem}
                   />
                 )) : (

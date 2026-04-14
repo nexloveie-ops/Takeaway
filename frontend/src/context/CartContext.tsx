@@ -1,20 +1,33 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 
+export interface CartItemOption {
+  groupId: string;
+  choiceId: string;
+  groupName: Record<string, string>;
+  choiceName: Record<string, string>;
+  extraPrice: number;
+}
+
 export interface CartItem {
   menuItemId: string;
-  names: Record<string, string>; // { 'zh-CN': '叉烧', 'en-US': 'Char Siu' }
+  names: Record<string, string>;
   price: number;
   quantity: number;
+  options?: CartItemOption[];
 }
 
 const STORAGE_KEY = 'cart_items';
+
+function cartItemKey(menuItemId: string, options?: CartItemOption[]): string {
+  if (!options || options.length === 0) return menuItemId;
+  return menuItemId + '|' + JSON.stringify(options.map(o => ({ g: o.groupId, c: o.choiceId })));
+}
 
 function loadCart(): CartItem[] {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    // Migrate old format: if item has `name` string instead of `names` object
     return parsed.map((item: CartItem & { name?: string }) => {
       if (!item.names && item.name) {
         return { ...item, names: { 'zh-CN': item.name, 'en-US': item.name } };
@@ -30,13 +43,14 @@ function saveCart(items: CartItem[]) {
 
 interface CartContextValue {
   items: CartItem[];
-  addItem: (menuItemId: string, names: Record<string, string>, price: number) => void;
-  removeItem: (menuItemId: string) => void;
-  increaseQuantity: (menuItemId: string) => void;
-  decreaseQuantity: (menuItemId: string) => void;
+  addItem: (menuItemId: string, names: Record<string, string>, price: number, options?: CartItemOption[]) => void;
+  removeItem: (key: string) => void;
+  increaseQuantity: (key: string) => void;
+  decreaseQuantity: (key: string) => void;
   clearCart: () => void;
   totalAmount: number;
   totalItems: number;
+  getItemKey: (item: CartItem) => string;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -52,49 +66,55 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { saveCart(items); }, [items]);
 
-  const addItem = useCallback((menuItemId: string, names: Record<string, string>, price: number) => {
+  const getItemKey = useCallback((item: CartItem) => cartItemKey(item.menuItemId, item.options), []);
+
+  const addItem = useCallback((menuItemId: string, names: Record<string, string>, price: number, options?: CartItemOption[]) => {
+    const key = cartItemKey(menuItemId, options);
     setItems((prev) => {
-      const existing = prev.find((i) => i.menuItemId === menuItemId);
+      const existing = prev.find((i) => cartItemKey(i.menuItemId, i.options) === key);
       if (existing) {
         return prev.map((i) =>
-          i.menuItemId === menuItemId ? { ...i, quantity: i.quantity + 1 } : i,
+          cartItemKey(i.menuItemId, i.options) === key ? { ...i, quantity: i.quantity + 1 } : i,
         );
       }
-      return [...prev, { menuItemId, names, price, quantity: 1 }];
+      return [...prev, { menuItemId, names, price, quantity: 1, options }];
     });
   }, []);
 
-  const removeItem = useCallback((menuItemId: string) => {
-    setItems((prev) => prev.filter((i) => i.menuItemId !== menuItemId));
+  const removeItem = useCallback((key: string) => {
+    setItems((prev) => prev.filter((i) => cartItemKey(i.menuItemId, i.options) !== key));
   }, []);
 
-  const increaseQuantity = useCallback((menuItemId: string) => {
+  const increaseQuantity = useCallback((key: string) => {
     setItems((prev) =>
       prev.map((i) =>
-        i.menuItemId === menuItemId ? { ...i, quantity: i.quantity + 1 } : i,
+        cartItemKey(i.menuItemId, i.options) === key ? { ...i, quantity: i.quantity + 1 } : i,
       ),
     );
   }, []);
 
-  const decreaseQuantity = useCallback((menuItemId: string) => {
+  const decreaseQuantity = useCallback((key: string) => {
     setItems((prev) => {
-      const item = prev.find((i) => i.menuItemId === menuItemId);
+      const item = prev.find((i) => cartItemKey(i.menuItemId, i.options) === key);
       if (!item) return prev;
-      if (item.quantity <= 1) return prev.filter((i) => i.menuItemId !== menuItemId);
+      if (item.quantity <= 1) return prev.filter((i) => cartItemKey(i.menuItemId, i.options) !== key);
       return prev.map((i) =>
-        i.menuItemId === menuItemId ? { ...i, quantity: i.quantity - 1 } : i,
+        cartItemKey(i.menuItemId, i.options) === key ? { ...i, quantity: i.quantity - 1 } : i,
       );
     });
   }, []);
 
   const clearCart = useCallback(() => { setItems([]); sessionStorage.removeItem(STORAGE_KEY); }, []);
 
-  const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const totalAmount = items.reduce((sum, i) => {
+    const optExtra = (i.options || []).reduce((s, o) => s + o.extraPrice, 0);
+    return sum + (i.price + optExtra) * i.quantity;
+  }, 0);
   const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, increaseQuantity, decreaseQuantity, clearCart, totalAmount, totalItems }}
+      value={{ items, addItem, removeItem, increaseQuantity, decreaseQuantity, clearCart, totalAmount, totalItems, getItemKey }}
     >
       {children}
     </CartContext.Provider>

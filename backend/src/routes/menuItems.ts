@@ -107,7 +107,7 @@ router.post(
   requirePermission('menu:write'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { categoryId, price, calories, avgWaitMinutes, photoUrl, arFileUrl, isSoldOut, translations, allergenIds } = req.body;
+      const { categoryId, price, calories, avgWaitMinutes, photoUrl, arFileUrl, isSoldOut, translations, allergenIds, optionGroups } = req.body;
 
       if (!categoryId || price == null || !Array.isArray(translations) || translations.length === 0) {
         throw createAppError(
@@ -144,6 +144,7 @@ router.post(
         isSoldOut: isSoldOut ?? false,
         translations,
         allergenIds: allergenIds || [],
+        optionGroups: optionGroups || [],
       });
 
       res.status(201).json(item);
@@ -169,7 +170,7 @@ router.put(
         throw createAppError('NOT_FOUND', 'Menu item not found');
       }
 
-      const { categoryId, price, calories, avgWaitMinutes, photoUrl, arFileUrl, isSoldOut, translations, allergenIds } = req.body;
+      const { categoryId, price, calories, avgWaitMinutes, photoUrl, arFileUrl, isSoldOut, translations, allergenIds, optionGroups } = req.body;
 
       if (categoryId !== undefined) {
         if (!mongoose.Types.ObjectId.isValid(categoryId)) {
@@ -202,6 +203,7 @@ router.put(
       if (isSoldOut !== undefined) updateData.isSoldOut = isSoldOut;
       if (translations !== undefined) updateData.translations = translations;
       if (allergenIds !== undefined) updateData.allergenIds = allergenIds;
+      if (optionGroups !== undefined) updateData.optionGroups = optionGroups;
 
       if (Object.keys(updateData).length === 0) {
         throw createAppError('VALIDATION_ERROR', 'At least one field must be provided for update');
