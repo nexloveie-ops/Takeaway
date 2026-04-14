@@ -1,0 +1,286 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import { Server as SocketIOServer } from 'socket.io';
+import { MenuItem } from '../models/MenuItem';
+import { Order } from '../models/Order';
+import { DailyOrderCounter } from '../models/DailyOrderCounter';
+import { createAppError } from '../middleware/errorHandler';
+
+export function createOrdersRouter(io: SocketIOServer): Router {
+  const router = Router();
+
+  // POST /api/orders — Create a new order
+  router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { type, tableNumber, seatNumber, items } = req.body;
+
+      // Validate type
+      if (!type || !['dine_in', 'takeout'].includes(type)) {
+        throw createAppError('VALIDATION_ERROR', 'type must be "dine_in" or "takeout"');
+      }
+
+      // For dine_in, require tableNumber and seatNumber
+      if (type === 'dine_in') {
+        if (tableNumber == null || typeof tableNumber !== 'number') {
+          throw createAppError('VALIDATION_ERROR', 'tableNumber is required for dine_in orders');
+        }
+        if (seatNumber == null || typeof seatNumber !== 'number') {
+          throw createAppError('VALIDATION_ERROR', 'seatNumber is required for dine_in orders');
+        }
+      }
+
+      // Validate items array
+      if (!Array.isArray(items) || items.length === 0) {
+        throw createAppError('VALIDATION_ERROR', 'items must be a non-empty array');
+      }
+
+      for (const item of items) {
+        if (!item.menuItemId || !mongoose.Types.ObjectId.isValid(item.menuItemId)) {
+          throw createAppError('VALIDATION_ERROR', `Invalid menuItemId: ${item.menuItemId}`);
+        }
+        if (!item.quantity || typeof item.quantity !== 'number' || item.quantity < 1) {
+          throw createAppError('VALIDATION_ERROR', 'Each item must have a quantity >= 1');
+        }
+      }
+
+      // Fetch all referenced menu items
+      const menuItemIds = items.map((i: { menuItemId: string }) => i.menuItemId);
+      const menuItems = await MenuItem.find({ _id: { $in: menuItemIds } });
+
+      // Check all items exist
+      const foundIds = new Set(menuItems.map((m) => m._id.toString()));
+      const missingIds = menuItemIds.filter((id: string) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        throw createAppError('VALIDATION_ERROR', `Menu items not found: ${missingIds.join(', ')}`);
+      }
+
+      // Check for sold out items
+      const soldOutItems = menuItems.filter((m) => m.isSoldOut);
+      if (soldOutItems.length > 0) {
+        throw createAppError('ITEM_SOLD_OUT', 'Some items are sold out', {
+          soldOutItemIds: soldOutItems.map((m) => m._id.toString()),
+        });
+      }
+
+      // Build a lookup map for menu items
+      const menuItemMap = new Map(menuItems.map((m) => [m._id.toString(), m]));
+
+      // Build order items with price/name snapshots
+      const orderItems = items.map((item: { menuItemId: string; quantity: number }) => {
+        const menuItem = menuItemMap.get(item.menuItemId)!;
+        // Use first translation name as snapshot, fallback to 'Unknown'
+        const itemName =
+          menuItem.translations && menuItem.translations.length > 0
+            ? menuItem.translations[0].name
+            : 'Unknown';
+        return {
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          unitPrice: menuItem.price,
+          itemName,
+        };
+      });
+
+      // Create the order
+      const orderData: Record<string, unknown> = {
+        type,
+        status: 'pending',
+        items: orderItems,
+      };
+
+      if (type === 'dine_in') {
+        orderData.tableNumber = tableNumber;
+        orderData.seatNumber = seatNumber;
+      }
+
+      if (type === 'takeout') {
+        const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const counter = await DailyOrderCounter.findOneAndUpdate(
+          { date: todayStr },
+          { $inc: { currentNumber: 1 } },
+          { upsert: true, returnDocument: 'after' }
+        );
+        orderData.dailyOrderNumber = counter!.currentNumber;
+      }
+
+      const order = await Order.create(orderData);
+
+      // Emit Socket.IO event
+      io.emit('order:new', order);
+
+      res.status(201).json(order);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/orders/dine-in — Get pending dine-in orders
+  router.get('/dine-in', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orders = await Order.find({ type: 'dine_in', status: 'pending' }).sort({ tableNumber: 1, seatNumber: 1 });
+      res.json(orders);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/orders/takeout — Get pending (not checked out) takeout orders sorted by dailyOrderNumber ASC
+  router.get('/takeout', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orders = await Order.find({ type: 'takeout', status: 'pending' }).sort({ dailyOrderNumber: 1 });
+      res.json(orders);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/orders/takeout/pending — Get checked_out (not completed) takeout orders
+  router.get('/takeout/pending', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orders = await Order.find({ type: 'takeout', status: 'checked_out' }).sort({ dailyOrderNumber: 1 });
+      res.json(orders);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // PUT /api/orders/takeout/:id/complete — Mark takeout order as completed
+  router.put('/takeout/:id/complete', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw createAppError('VALIDATION_ERROR', 'Invalid order ID');
+      }
+
+      const order = await Order.findById(id);
+      if (!order) {
+        throw createAppError('NOT_FOUND', 'Order not found');
+      }
+
+      if (order.type !== 'takeout') {
+        throw createAppError('VALIDATION_ERROR', 'Only takeout orders can be marked as completed via this endpoint');
+      }
+
+      if (order.status !== 'checked_out') {
+        throw createAppError('VALIDATION_ERROR', 'Only checked_out takeout orders can be marked as completed', {
+          currentStatus: order.status,
+        });
+      }
+
+      order.status = 'completed';
+      order.completedAt = new Date();
+      await order.save();
+
+      res.json(order);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/orders/:id — Get order details
+  router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw createAppError('VALIDATION_ERROR', 'Invalid order ID');
+      }
+
+      const order = await Order.findById(id);
+      if (!order) {
+        throw createAppError('NOT_FOUND', 'Order not found');
+      }
+
+      res.json(order);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // PUT /api/orders/:id/items — Modify order items
+  router.put('/:id/items', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw createAppError('VALIDATION_ERROR', 'Invalid order ID');
+      }
+
+      const order = await Order.findById(id);
+      if (!order) {
+        throw createAppError('NOT_FOUND', 'Order not found');
+      }
+
+      // Only pending orders can be modified
+      if (order.status !== 'pending') {
+        throw createAppError('ORDER_NOT_MODIFIABLE', 'Order cannot be modified', {
+          currentStatus: order.status,
+        });
+      }
+
+      const { items } = req.body;
+
+      // Validate items array
+      if (!Array.isArray(items) || items.length === 0) {
+        throw createAppError('VALIDATION_ERROR', 'items must be a non-empty array');
+      }
+
+      for (const item of items) {
+        if (!item.menuItemId || !mongoose.Types.ObjectId.isValid(item.menuItemId)) {
+          throw createAppError('VALIDATION_ERROR', `Invalid menuItemId: ${item.menuItemId}`);
+        }
+        if (!item.quantity || typeof item.quantity !== 'number' || item.quantity < 1) {
+          throw createAppError('VALIDATION_ERROR', 'Each item must have a quantity >= 1');
+        }
+      }
+
+      // Fetch all referenced menu items
+      const menuItemIds = items.map((i: { menuItemId: string }) => i.menuItemId);
+      const menuItems = await MenuItem.find({ _id: { $in: menuItemIds } });
+
+      // Check all items exist
+      const foundIds = new Set(menuItems.map((m) => m._id.toString()));
+      const missingIds = menuItemIds.filter((id: string) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        throw createAppError('VALIDATION_ERROR', `Menu items not found: ${missingIds.join(', ')}`);
+      }
+
+      // Check for sold out items
+      const soldOutItems = menuItems.filter((m) => m.isSoldOut);
+      if (soldOutItems.length > 0) {
+        throw createAppError('ITEM_SOLD_OUT', 'Some items are sold out', {
+          soldOutItemIds: soldOutItems.map((m) => m._id.toString()),
+        });
+      }
+
+      // Build a lookup map for menu items
+      const menuItemMap = new Map(menuItems.map((m) => [m._id.toString(), m]));
+
+      // Build updated order items with price/name snapshots
+      const orderItems = items.map((item: { menuItemId: string; quantity: number }) => {
+        const menuItem = menuItemMap.get(item.menuItemId)!;
+        const itemName =
+          menuItem.translations && menuItem.translations.length > 0
+            ? menuItem.translations[0].name
+            : 'Unknown';
+        return {
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          unitPrice: menuItem.price,
+          itemName,
+        };
+      });
+
+      // Update the order's items
+      order.items = orderItems as unknown as typeof order.items;
+      await order.save();
+
+      // Emit Socket.IO event
+      io.emit('order:updated', order);
+
+      res.json(order);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  return router;
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+frontend/dist/
+backend/dist/
+backend/uploads/
+.env
+*.log
+.DS_Store
+demo/
+backend/seed-admin.ts
