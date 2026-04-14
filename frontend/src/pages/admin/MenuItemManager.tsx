@@ -22,8 +22,6 @@ export default function MenuItemManager() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
-  const [uploadingArId, setUploadingArId] = useState<string | null>(null);
 
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
   const authHeaders = { Authorization: `Bearer ${token}` };
