@@ -99,6 +99,21 @@ export default function MenuView() {
     }
   }, []);
 
+  const [heroHidden, setHeroHidden] = useState(false);
+  const lastScrollY = useRef(0);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const y = el.scrollTop;
+    if (y > 30 && y > lastScrollY.current) {
+      setHeroHidden(true);
+    } else if (y < lastScrollY.current - 5 || y <= 10) {
+      setHeroHidden(false);
+    }
+    lastScrollY.current = y;
+  }, []);
+
   const goToCart = () => {
     const qs = searchParams.toString();
     navigate(`/customer/cart${qs ? '?' + qs : ''}`);
@@ -113,11 +128,12 @@ export default function MenuView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Hero */}
+      {/* Hero — hides on scroll down, shows on scroll up */}
       <div style={{
-        position: 'relative', height: 140, flexShrink: 0,
+        position: 'relative', height: heroHidden ? 0 : 140, flexShrink: 0,
         background: 'linear-gradient(135deg, #8B1A1A 0%, #C41E24 50%, #D4342A 100%)',
-        display: 'flex', alignItems: 'flex-end', padding: 20, overflow: 'hidden',
+        display: 'flex', alignItems: 'flex-end', padding: heroHidden ? 0 : 20, overflow: 'hidden',
+        transition: 'height 0.3s ease, padding 0.3s ease',
       }}>
         <div style={{ position: 'relative', zIndex: 1, color: '#fff' }}>
           <h1 style={{ fontFamily: "'Noto Serif SC', serif", fontSize: 24, fontWeight: 700, letterSpacing: 3, marginBottom: 2 }}>港知味</h1>
@@ -151,7 +167,7 @@ export default function MenuView() {
       </div>
 
       {/* Scrollable Content — all categories rendered continuously */}
-      <div ref={scrollContainerRef} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {categories.map(cat => {
           const catItems = itemsByCategory.get(cat._id) || [];
           return (
