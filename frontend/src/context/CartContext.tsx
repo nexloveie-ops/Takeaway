@@ -48,6 +48,9 @@ interface CartContextValue {
   increaseQuantity: (key: string) => void;
   decreaseQuantity: (key: string) => void;
   clearCart: () => void;
+  setItems: (items: CartItem[]) => void;
+  editOrderId: string | null;
+  setEditOrderId: (id: string | null) => void;
   totalAmount: number;
   totalItems: number;
   getItemKey: (item: CartItem) => string;
@@ -62,15 +65,18 @@ export function useCart(): CartContextValue {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(loadCart);
+  const [items, setItemsState] = useState<CartItem[]>(loadCart);
+  const [editOrderId, setEditOrderId] = useState<string | null>(null);
 
   useEffect(() => { saveCart(items); }, [items]);
+
+  const setItems = useCallback((newItems: CartItem[]) => { setItemsState(newItems); }, []);
 
   const getItemKey = useCallback((item: CartItem) => cartItemKey(item.menuItemId, item.options), []);
 
   const addItem = useCallback((menuItemId: string, names: Record<string, string>, price: number, options?: CartItemOption[]) => {
     const key = cartItemKey(menuItemId, options);
-    setItems((prev) => {
+    setItemsState((prev) => {
       const existing = prev.find((i) => cartItemKey(i.menuItemId, i.options) === key);
       if (existing) {
         return prev.map((i) =>
@@ -82,11 +88,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeItem = useCallback((key: string) => {
-    setItems((prev) => prev.filter((i) => cartItemKey(i.menuItemId, i.options) !== key));
+    setItemsState((prev) => prev.filter((i) => cartItemKey(i.menuItemId, i.options) !== key));
   }, []);
 
   const increaseQuantity = useCallback((key: string) => {
-    setItems((prev) =>
+    setItemsState((prev) =>
       prev.map((i) =>
         cartItemKey(i.menuItemId, i.options) === key ? { ...i, quantity: i.quantity + 1 } : i,
       ),
@@ -94,7 +100,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const decreaseQuantity = useCallback((key: string) => {
-    setItems((prev) => {
+    setItemsState((prev) => {
       const item = prev.find((i) => cartItemKey(i.menuItemId, i.options) === key);
       if (!item) return prev;
       if (item.quantity <= 1) return prev.filter((i) => cartItemKey(i.menuItemId, i.options) !== key);
@@ -104,7 +110,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const clearCart = useCallback(() => { setItems([]); sessionStorage.removeItem(STORAGE_KEY); }, []);
+  const clearCart = useCallback(() => { setItemsState([]); setEditOrderId(null); sessionStorage.removeItem(STORAGE_KEY); }, []);
 
   const totalAmount = items.reduce((sum, i) => {
     const optExtra = (i.options || []).reduce((s, o) => s + o.extraPrice, 0);
@@ -114,7 +120,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, increaseQuantity, decreaseQuantity, clearCart, totalAmount, totalItems, getItemKey }}
+      value={{ items, addItem, removeItem, increaseQuantity, decreaseQuantity, clearCart, setItems, editOrderId, setEditOrderId, totalAmount, totalItems, getItemKey }}
     >
       {children}
     </CartContext.Provider>

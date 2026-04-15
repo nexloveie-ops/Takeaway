@@ -2,12 +2,25 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
+import { playDineInSound, playTakeoutSound, unlockAudio } from '../utils/orderSound';
 
 export default function CashierLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [clock, setClock] = useState('');
+
+  // Unlock audio on first user interaction
+  useEffect(() => {
+    const handler = () => unlockAudio();
+    document.addEventListener('click', handler, { once: true });
+    document.addEventListener('touchstart', handler, { once: true });
+    return () => {
+      document.removeEventListener('click', handler);
+      document.removeEventListener('touchstart', handler);
+    };
+  }, []);
 
   useEffect(() => {
     const update = () => {
@@ -17,6 +30,19 @@ export default function CashierLayout() {
     update();
     const id = setInterval(update, 10000);
     return () => clearInterval(id);
+  }, []);
+
+  // Global new order sound notification
+  useEffect(() => {
+    const socket = io({ transports: ['websocket'] });
+    socket.on('order:new', (order: { type?: string }) => {
+      if (order?.type === 'takeout') {
+        playTakeoutSound();
+      } else {
+        playDineInSound();
+      }
+    });
+    return () => { socket.disconnect(); };
   }, []);
 
   const handleLogout = () => { logout(); navigate('/login'); };
@@ -57,14 +83,14 @@ export default function CashierLayout() {
         <NavLink to="/cashier" end style={({ isActive }) => tabStyle(isActive)}>
           {t('cashier.dineIn')}
         </NavLink>
-        <NavLink to="/cashier/order" style={({ isActive }) => tabStyle(isActive)}>
-          {t('cashier.newOrder', '点单')}
-        </NavLink>
         <NavLink to="/cashier/takeout" style={({ isActive }) => tabStyle(isActive)}>
           {t('cashier.takeout')}
         </NavLink>
         <NavLink to="/cashier/delivery" style={({ isActive }) => tabStyle(isActive)}>
           {t('cashier.delivery')}
+        </NavLink>
+        <NavLink to="/cashier/order" style={({ isActive }) => tabStyle(isActive)}>
+          {t('cashier.newOrder', '点单')}
         </NavLink>
       </div>
 

@@ -24,6 +24,7 @@ import OrderHistory from './pages/admin/OrderHistory';
 import ReportDashboard from './pages/admin/ReportDashboard';
 import UserManager from './pages/admin/UserManager';
 import SystemConfig from './pages/admin/SystemConfig';
+import RestaurantInfo from './pages/admin/RestaurantInfo';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -59,6 +60,7 @@ export default function App() {
           {/* Admin routes — require auth */}
           <Route path="/admin" element={<RequireAuth><AdminLayout /></RequireAuth>}>
             <Route index element={<CategoryManager />} />
+            <Route path="restaurant" element={<RestaurantInfo />} />
             <Route path="categories" element={<CategoryManager />} />
             <Route path="menu-items" element={<MenuItemManager />} />
             <Route path="inventory" element={<InventoryManager />} />

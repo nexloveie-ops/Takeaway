@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useCart } from '../../context/CartContext';
 
 export default function CartPage() {
-  const { items, increaseQuantity, decreaseQuantity, removeItem, clearCart, totalAmount, totalItems, getItemKey } = useCart();
+  const { items, increaseQuantity, decreaseQuantity, removeItem, clearCart, totalAmount, totalItems, getItemKey, editOrderId, setEditOrderId } = useCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
@@ -23,31 +23,44 @@ export default function CartPage() {
     setSubmitting(true);
     setError('');
     try {
-      const body: Record<string, unknown> = {
-        items: items.map(i => {
-          const item: Record<string, unknown> = { menuItemId: i.menuItemId, quantity: i.quantity };
-          if (i.options && i.options.length > 0) {
-            item.selectedOptions = i.options.map(o => ({ groupId: o.groupId, choiceId: o.choiceId }));
-          }
-          return item;
-        }),
-      };
-      if (orderType === 'takeout') {
-        body.type = 'takeout';
-      } else {
-        body.type = 'dine_in';
-        body.tableNumber = Number(table);
-        body.seatNumber = Number(seat);
-      }
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      const itemsPayload = items.map(i => {
+        const item: Record<string, unknown> = { menuItemId: i.menuItemId, quantity: i.quantity };
+        if (i.options && i.options.length > 0) {
+          item.selectedOptions = i.options.map(o => ({ groupId: o.groupId, choiceId: o.choiceId }));
+        }
+        return item;
       });
-      if (!res.ok) throw new Error('Failed to submit order');
+
+      let res: Response;
+      if (editOrderId) {
+        // Update existing order
+        res = await fetch(`/api/orders/${editOrderId}/items`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: itemsPayload }),
+        });
+      } else {
+        // Create new order
+        const body: Record<string, unknown> = { items: itemsPayload };
+        if (orderType === 'takeout') {
+          body.type = 'takeout';
+        } else {
+          body.type = 'dine_in';
+          body.tableNumber = Number(table);
+          body.seatNumber = Number(seat);
+        }
+        res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      }
+      if (!res.ok) throw new Error('Failed');
       const order = await res.json();
+      const navId = editOrderId || order._id;
       clearCart();
-      navigate(`/customer/order/${order._id}?${qs}`);
+      setEditOrderId(null);
+      navigate(`/customer/order/${navId}?${qs}`);
     } catch {
       setError(t('customer.updateFailed'));
     } finally {
@@ -143,7 +156,7 @@ export default function CartPage() {
         </div>
         <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}
           style={{ padding: '12px 28px', fontSize: 15, letterSpacing: 1 }}>
-          {submitting ? t('common.loading') : t('customer.submitOrder')}
+          {submitting ? t('common.loading') : editOrderId ? t('customer.saveChanges') : t('customer.submitOrder')}
         </button>
       </div>
     </div>

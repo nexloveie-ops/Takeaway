@@ -5,6 +5,7 @@ const OrderItemSubdocSchema = new mongoose.Schema({
   quantity: { type: Number, required: true, min: 1 },
   unitPrice: { type: Number, required: true },
   itemName: { type: String, required: true },
+  itemNameEn: { type: String, default: '' },
   selectedOptions: [{
     groupName: { type: String },
     choiceName: { type: String },

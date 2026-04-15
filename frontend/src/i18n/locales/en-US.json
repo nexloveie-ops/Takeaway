@@ -87,7 +87,10 @@
     "checkoutSuccess": "Checkout Successful",
     "noOrders": "No pending orders",
     "selectMode": "Select Checkout Mode",
-    "amountMismatch": "Cash + Card amount must equal total"
+    "amountMismatch": "Cash + Card amount must equal total",
+    "cashReceived": "Cash Received",
+    "change": "Change",
+    "insufficientCash": "Insufficient cash amount"
   },
   "admin": {
     "title": "Admin Panel",
@@ -100,6 +103,16 @@
     "reports": "Reports",
     "users": "Users",
     "systemConfig": "System Config",
+    "restaurantInfo": "Restaurant Info",
+    "restaurantNameZh": "Name (Chinese)",
+    "restaurantNameEn": "Name (English)",
+    "restaurantAddress": "Address",
+    "restaurantPhone": "Phone",
+    "restaurantWebsite": "Website",
+    "restaurantEmail": "Email",
+    "receiptTerms": "Receipt Terms & Conditions",
+    "receiptTermsHelp": "Use [QR:URL] to insert a QR code on the receipt",
+    "savedSuccess": "Saved successfully",
     "dashboard": "Dashboard",
     "allergens": "Allergen Management",
     "allergenName": "Allergen Name",

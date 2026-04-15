@@ -87,7 +87,10 @@
     "checkoutSuccess": "结账成功",
     "noOrders": "暂无待处理订单",
     "selectMode": "选择结账方式",
-    "amountMismatch": "现金与刷卡金额之和必须等于总额"
+    "amountMismatch": "现金与刷卡金额之和必须等于总额",
+    "cashReceived": "实收",
+    "change": "找零",
+    "insufficientCash": "实收金额不足"
   },
   "admin": {
     "title": "管理后台",
@@ -100,6 +103,16 @@
     "reports": "营业报表",
     "users": "用户管理",
     "systemConfig": "系统配置",
+    "restaurantInfo": "餐馆信息",
+    "restaurantNameZh": "餐馆名称（中文）",
+    "restaurantNameEn": "餐馆名称（英文）",
+    "restaurantAddress": "地址",
+    "restaurantPhone": "电话",
+    "restaurantWebsite": "网址",
+    "restaurantEmail": "邮箱",
+    "receiptTerms": "小票条款",
+    "receiptTermsHelp": "使用 [QR:网址] 在小票中插入二维码",
+    "savedSuccess": "保存成功",
     "dashboard": "仪表盘",
     "allergens": "过敏原管理",
     "allergenName": "过敏原名称",

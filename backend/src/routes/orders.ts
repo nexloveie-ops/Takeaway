@@ -69,10 +69,10 @@ export function createOrdersRouter(io: SocketIOServer): Router {
       const orderItems = items.map((item: { menuItemId: string; quantity: number; selectedOptions?: { groupId: string; choiceId: string }[] }) => {
         const menuItem = menuItemMap.get(item.menuItemId)!;
         // Use first translation name as snapshot, fallback to 'Unknown'
-        const itemName =
-          menuItem.translations && menuItem.translations.length > 0
-            ? menuItem.translations[0].name
-            : 'Unknown';
+        const zhTrans = menuItem.translations?.find((t: { locale: string }) => t.locale === 'zh-CN');
+        const enTrans = menuItem.translations?.find((t: { locale: string }) => t.locale === 'en-US');
+        const itemName = zhTrans?.name || enTrans?.name || (menuItem.translations?.[0] as { name: string })?.name || 'Unknown';
+        const itemNameEn = enTrans?.name || zhTrans?.name || itemName;
 
         // Resolve selectedOptions from menuItem's optionGroups
         const selectedOptions: { groupName: string; choiceName: string; extraPrice: number }[] = [];
@@ -96,6 +96,7 @@ export function createOrdersRouter(io: SocketIOServer): Router {
           quantity: item.quantity,
           unitPrice: menuItem.price,
           itemName,
+          itemNameEn,
           selectedOptions,
         };
       });
@@ -274,10 +275,10 @@ export function createOrdersRouter(io: SocketIOServer): Router {
       // Build updated order items with price/name snapshots
       const orderItems = items.map((item: { menuItemId: string; quantity: number; selectedOptions?: { groupId: string; choiceId: string }[] }) => {
         const menuItem = menuItemMap.get(item.menuItemId)!;
-        const itemName =
-          menuItem.translations && menuItem.translations.length > 0
-            ? menuItem.translations[0].name
-            : 'Unknown';
+        const zhTrans2 = menuItem.translations?.find((t: { locale: string }) => t.locale === 'zh-CN');
+        const enTrans2 = menuItem.translations?.find((t: { locale: string }) => t.locale === 'en-US');
+        const itemName = zhTrans2?.name || enTrans2?.name || (menuItem.translations?.[0] as { name: string })?.name || 'Unknown';
+        const itemNameEn = enTrans2?.name || zhTrans2?.name || itemName;
 
         // Resolve selectedOptions from menuItem's optionGroups
         const selectedOptions: { groupName: string; choiceName: string; extraPrice: number }[] = [];
@@ -301,6 +302,7 @@ export function createOrdersRouter(io: SocketIOServer): Router {
           quantity: item.quantity,
           unitPrice: menuItem.price,
           itemName,
+          itemNameEn,
           selectedOptions,
         };
       });

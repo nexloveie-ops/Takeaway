@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
 const sidebarItems = [
+  { path: '/admin/restaurant', icon: '🏪', key: 'admin.restaurantInfo' },
   { path: '/admin/categories', icon: '📂', key: 'admin.categories' },
   { path: '/admin/menu-items', icon: '🍽️', key: 'admin.menuItems' },
   { path: '/admin/inventory', icon: '📦', key: 'admin.inventory' },

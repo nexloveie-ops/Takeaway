@@ -6,6 +6,8 @@ export interface OrderItem {
   quantity: number;
   unitPrice: number;
   itemName: string;
+  itemNameEn?: string;
+  selectedOptions?: { groupName: string; choiceName: string; extraPrice: number }[];
 }
 
 export interface Order {
@@ -48,17 +50,29 @@ export default function OrderDetail({ orders }: OrderDetailProps) {
             {seatOrders.map((order) => (
               <div key={order._id}>
                 {order.items.map((item) => (
-                  <div key={item._id} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '6px 0', borderBottom: '1px solid #eee', fontSize: 13,
-                  }}>
-                    <span style={{ fontWeight: 500 }}>{item.itemName}</span>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-light)' }}>×{item.quantity}</span>
-                      <span style={{ fontWeight: 600, color: 'var(--red-primary)', minWidth: 50, textAlign: 'right' }}>
-                        €{(item.unitPrice * item.quantity).toFixed(0)}
-                      </span>
+                  <div key={item._id} style={{ padding: '6px 0', borderBottom: '1px solid #eee' }}>
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
+                    }}>
+                      <span style={{ fontWeight: 500 }}>{item.itemName}</span>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-light)' }}>×{item.quantity}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--red-primary)', minWidth: 50, textAlign: 'right' }}>
+                          €{(item.unitPrice * item.quantity).toFixed(2)}
+                        </span>
+                      </div>
                     </div>
+                    {item.selectedOptions && item.selectedOptions.length > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--text-light)', paddingLeft: 8, marginTop: 2 }}>
+                        {item.selectedOptions.map((opt, i) => (
+                          <span key={i}>
+                            {i > 0 && ' · '}
+                            {opt.groupName}: {opt.choiceName}
+                            {opt.extraPrice > 0 && ` +€${opt.extraPrice}`}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
