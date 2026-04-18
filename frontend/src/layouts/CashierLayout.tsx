@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 import { playDineInSound, playTakeoutSound, unlockAudio } from '../utils/orderSound';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function CashierLayout() {
   const { user, logout } = useAuth();
@@ -68,6 +69,7 @@ export default function CashierLayout() {
         </h1>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>
           <span className="badge" style={{ background: '#F3E5F5', color: '#7B1FA2', padding: '4px 10px', borderRadius: 4, fontWeight: 600, fontSize: 12 }}>{clock}</span>
+          <LanguageSwitcher />
           <span style={{ fontWeight: 600 }}>{user?.username}</span>
           <button className="btn btn-outline" style={{ padding: '6px 14px', fontSize: 12 }} onClick={handleLogout}>
             {t('login.logout', '退出')}
@@ -91,6 +93,12 @@ export default function CashierLayout() {
         </NavLink>
         <NavLink to="/cashier/order" style={({ isActive }) => tabStyle(isActive)}>
           {t('cashier.newOrder', '点单')}
+        </NavLink>
+        <NavLink to="/cashier/reprint" style={({ isActive }) => tabStyle(isActive)}>
+          {t('cashier.reprint', '重印小票')}
+        </NavLink>
+        <NavLink to="/cashier/inventory" style={({ isActive }) => tabStyle(isActive)}>
+          {t('admin.inventory', '库存')}
         </NavLink>
       </div>
 

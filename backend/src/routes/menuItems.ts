@@ -227,13 +227,19 @@ router.delete(
 
 /**
  * PUT /api/menu/items/:id/sold-out
- * Updates the sold-out status of a menu item. Requires auth + menu:write permission.
+ * Updates the sold-out status of a menu item. Requires auth + menu:write or menu:sold-out permission.
  * Accepts { isSoldOut: boolean } in the body.
  */
 router.put(
   '/:id/sold-out',
   authMiddleware,
-  requirePermission('menu:write'),
+  (req: Request, _res: Response, next: NextFunction) => {
+    // Allow either menu:write (owner) or menu:sold-out (cashier)
+    if (!req.user) { next(createAppError('UNAUTHORIZED', 'Authentication required')); return; }
+    const { hasPermission: hasPerm } = require('../middleware/permissions');
+    if (hasPerm(req.user.role, 'menu:write') || hasPerm(req.user.role, 'menu:sold-out')) { next(); return; }
+    next(createAppError('FORBIDDEN', 'Insufficient permissions'));
+  },
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;

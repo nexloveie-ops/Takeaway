@@ -32,8 +32,10 @@ export default function RestaurantInfo() {
     CONFIG_KEYS.forEach(k => { init[k] = ''; });
     return init as Record<ConfigKey, string>;
   });
+  const [logoUrl, setLogoUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -49,10 +51,9 @@ export default function RestaurantInfo() {
           });
           return next;
         });
+        if (data.restaurant_logo) setLogoUrl(data.restaurant_logo);
       }
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }, [token]);
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
@@ -74,16 +75,60 @@ export default function RestaurantInfo() {
         body: JSON.stringify(body),
       });
       if (res.ok) setSaved(true);
-    } catch {
-      /* ignore */
-    } finally {
-      setSaving(false);
-    }
+    } catch { /* ignore */ }
+    finally { setSaving(false); }
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    setUploadingLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      const res = await fetch('/api/admin/logo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLogoUrl(data.logoUrl);
+      }
+    } catch { /* ignore */ }
+    finally { setUploadingLogo(false); }
   };
 
   return (
     <div>
       <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>{t('admin.restaurantInfo')}</h2>
+
+      {/* Logo Upload */}
+      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <label style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: 10 }}>
+          Logo
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%', overflow: 'hidden',
+            background: logoUrl ? `url(${logoUrl}) center/cover` : 'var(--bg)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '2px solid var(--border)', fontSize: 32, flexShrink: 0,
+          }}>
+            {!logoUrl && '🏪'}
+          </div>
+          <div>
+            <label style={{ cursor: 'pointer' }}>
+              <span className="btn btn-outline" style={{ fontSize: 13, display: 'inline-block' }}>
+                {uploadingLogo ? '上传中...' : logoUrl ? '更换 Logo' : '上传 Logo'}
+              </span>
+              <input type="file" accept="image/*" hidden disabled={uploadingLogo}
+                onChange={e => { if (e.target.files?.[0]) { handleLogoUpload(e.target.files[0]); e.target.value = ''; } }} />
+            </label>
+            <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 4 }}>
+              支持 JPG, PNG, SVG, 最大 5MB
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="card" style={{ padding: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
 interface ReceiptOrderItem {
   _id: string;
@@ -16,6 +16,7 @@ interface ReceiptOrder {
   tableNumber?: number;
   seatNumber?: number;
   dailyOrderNumber?: number;
+  dineInOrderNumber?: string;
   status: string;
   items: ReceiptOrderItem[];
 }
@@ -63,13 +64,146 @@ function parseQRCodes(text: string): Array<{ type: 'text' | 'qr'; value: string 
   return segments;
 }
 
+/** Build standalone receipt HTML for iframe printing */
+function buildReceiptHTML(
+  receipt: ReceiptData,
+  config: RestaurantConfig,
+  cashReceived?: number,
+  changeAmount?: number,
+): string {
+  const isDineIn = receipt.orders.some(o => o.type === 'dine_in');
+  const checkedOutAt = new Date(receipt.checkedOutAt);
+  const paymentLabel = receipt.paymentMethod === 'cash' ? 'Cash' : receipt.paymentMethod === 'card' ? 'Card' : 'Mixed';
+  const restaurantName = config.restaurant_name_en || config.restaurant_name_zh || '';
+  const termsSegments = config.receipt_terms ? parseQRCodes(config.receipt_terms) : [];
+
+  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: monospace; font-size: 14px; font-weight: bold; color: #000; max-width: 300px; margin: 0 auto; padding: 12px; }
+    .center { text-align: center; }
+    .divider { border-top: 1px dashed #000; margin: 8px 0; }
+    .row { display: flex; justify-content: space-between; margin: 3px 0; }
+    .big { font-size: 20px; margin: 6px 0; letter-spacing: 2px; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+    td { padding: 3px 0; vertical-align: top; }
+    .qty { text-align: center; width: 30px; }
+    .amt { text-align: right; }
+    .small { font-size: 10px; }
+    .terms { text-align: center; font-size: 11px; white-space: pre-line; margin-top: 8px; border-top: 1px dashed #000; padding-top: 8px; }
+    .terms img { font-weight: normal; }
+    .footer { text-align: center; margin-top: 12px; border-top: 1px dashed #000; padding-top: 8px; font-size: 12px; }
+  </style></head><body>`;
+
+  // Header
+  html += `<div class="center">`;
+  if (restaurantName) html += `<div style="font-size:16px;margin-bottom:2px">${restaurantName}</div>`;
+  if (config.restaurant_address) html += `<div class="small">${config.restaurant_address}</div>`;
+  if (config.restaurant_phone) html += `<div class="small">Tel: ${config.restaurant_phone}</div>`;
+  if (config.restaurant_website) html += `<div class="small">${config.restaurant_website}</div>`;
+  if (config.restaurant_email) html += `<div class="small">${config.restaurant_email}</div>`;
+
+  if (isDineIn) {
+    if (receipt.tableNumber != null && receipt.tableNumber > 0) html += `<div class="big">Table ${receipt.tableNumber}</div>`;
+    const seats = [...new Set(receipt.orders.map(o => o.seatNumber).filter(s => s != null && s > 0))].sort();
+    if (seats.length > 0) html += `<div class="big">Seat ${seats.join(', ')}</div>`;
+    const orderNum = receipt.orders.find(o => o.dineInOrderNumber)?.dineInOrderNumber;
+    if (orderNum) html += `<div class="big">Order #${orderNum}</div>`;
+    html += `<div class="small" style="margin-top:4px">Ref: ${String(receipt.checkoutId).slice(-8).toUpperCase()}</div>`;
+  } else {
+    html += `<div class="big">Pickup #${receipt.orders[0]?.dailyOrderNumber || ''}</div>`;
+  }
+  html += `</div><div class="divider"></div>`;
+
+  // Items
+  html += `<table>`;
+  for (const order of receipt.orders) {
+    for (const item of order.items) {
+      html += `<tr><td><div>${item.itemName}</div>`;
+      if (item.itemNameEn && item.itemNameEn !== item.itemName) html += `<div class="small" style="color:#666">${item.itemNameEn}</div>`;
+      if (item.selectedOptions && item.selectedOptions.length > 0) {
+        html += `<div class="small" style="color:#888;padding-left:4px">${item.selectedOptions.map(o => o.choiceName + (o.extraPrice > 0 ? ` +€${o.extraPrice}` : '')).join(', ')}</div>`;
+      }
+      html += `</td><td class="qty">x${item.quantity}</td><td class="amt">€${(item.unitPrice * item.quantity).toFixed(2)}</td></tr>`;
+    }
+  }
+  html += `</table><div class="divider"></div>`;
+
+  // Total
+  html += `<div class="row" style="font-size:16px"><span>Total</span><span>€${receipt.totalAmount.toFixed(2)}</span></div>`;
+  html += `<div class="row" style="margin-top:4px"><span>Payment</span><span>${paymentLabel}</span></div>`;
+
+  if (receipt.paymentMethod === 'mixed') {
+    html += `<div class="row"><span>Cash</span><span>€${(receipt.cashAmount ?? 0).toFixed(2)}</span></div>`;
+    html += `<div class="row"><span>Card</span><span>€${(receipt.cardAmount ?? 0).toFixed(2)}</span></div>`;
+  }
+
+  if (receipt.paymentMethod === 'cash' && cashReceived != null && cashReceived > 0) {
+    html += `<div class="divider"></div>`;
+    html += `<div class="row"><span>Cash Received</span><span>€${cashReceived.toFixed(2)}</span></div>`;
+    if (changeAmount != null && changeAmount > 0) {
+      html += `<div class="row"><span>Change</span><span>€${changeAmount.toFixed(2)}</span></div>`;
+    }
+  }
+
+  // Terms
+  if (termsSegments.length > 0) {
+    html += `<div class="terms">`;
+    for (const seg of termsSegments) {
+      if (seg.type === 'text') html += seg.value;
+      else html += `<div style="margin:6px auto;font-weight:normal"><img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(seg.value)}" width="100" height="100" /></div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Footer
+  html += `<div class="footer"><div>${checkedOutAt.toLocaleString('en-GB')}</div><div style="margin-top:4px;font-size:10px">Thank you for dining with us!</div></div>`;
+  html += `</body></html>`;
+  return html;
+}
+
+/** Print HTML content via hidden iframe */
+function printViaIframe(html: string, copies: number) {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.left = '-9999px';
+  iframe.style.top = '-9999px';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) { document.body.removeChild(iframe); return; }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  // Wait for images to load, then print
+  iframe.onload = () => {
+    const images = doc.querySelectorAll('img');
+    const promises = Array.from(images).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise<void>(r => { img.onload = () => r(); img.onerror = () => r(); });
+    });
+    Promise.all(promises).then(() => {
+      setTimeout(() => {
+        for (let i = 0; i < copies; i++) {
+          iframe.contentWindow?.print();
+        }
+        // Clean up after a delay
+        setTimeout(() => { document.body.removeChild(iframe); }, 1000);
+      }, 100);
+    });
+  };
+}
+
 export default function ReceiptPrint({ checkoutId, cashReceived, changeAmount }: ReceiptPrintProps) {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [config, setConfig] = useState<RestaurantConfig>({});
   const [copies, setCopies] = useState(2);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const printedRef = useRef(false);
+  const autoPrintDone = useRef(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -83,7 +217,7 @@ export default function ReceiptPrint({ checkoutId, cashReceived, changeAmount }:
         if (configRes.ok) {
           const c: Record<string, string> = await configRes.json();
           setConfig(c);
-          if (c.receipt_print_copies) setCopies(parseInt(c.receipt_print_copies, 10) || 1);
+          if (c.receipt_print_copies) setCopies(parseInt(c.receipt_print_copies, 10) || 2);
         }
       } catch {
         setError('Error loading receipt');
@@ -94,203 +228,102 @@ export default function ReceiptPrint({ checkoutId, cashReceived, changeAmount }:
     fetchData();
   }, [checkoutId]);
 
+  // Auto-print once when data is ready
   useEffect(() => {
-    if (receipt && !printedRef.current) {
-      printedRef.current = true;
-      const timer = setTimeout(() => {
-        for (let i = 0; i < copies; i++) window.print();
-      }, 300);
-      return () => clearTimeout(timer);
+    if (receipt && !autoPrintDone.current) {
+      autoPrintDone.current = true;
+      const html = buildReceiptHTML(receipt, config, cashReceived, changeAmount);
+      printViaIframe(html, copies);
     }
-  }, [receipt, copies]);
+  }, [receipt, config, copies, cashReceived, changeAmount]);
 
-  // Portal: inject receipt HTML into a root-level div for clean printing
-  useEffect(() => {
+  // Manual print function exposed via window.print override
+  const handleManualPrint = useCallback(() => {
     if (!receipt) return;
-    let printRoot = document.getElementById('receipt-print-root');
-    if (!printRoot) {
-      printRoot = document.createElement('div');
-      printRoot.id = 'receipt-print-root';
-      document.body.appendChild(printRoot);
-    }
-    // Small delay to ensure DOM is rendered
-    const timer = setTimeout(() => {
-      const receiptEl = document.getElementById('receipt-content');
-      if (receiptEl && printRoot) {
-        printRoot.innerHTML = receiptEl.outerHTML;
-      }
-    }, 100);
-    return () => {
-      clearTimeout(timer);
-      if (printRoot) printRoot.innerHTML = '';
-    };
+    const html = buildReceiptHTML(receipt, config, cashReceived, changeAmount);
+    printViaIframe(html, 1);
   }, [receipt, config, cashReceived, changeAmount]);
+
+  // Expose manual print globally so parent buttons can use window.print()
+  useEffect(() => {
+    const origPrint = window.print.bind(window);
+    window.print = () => {
+      if (receipt) {
+        handleManualPrint();
+      } else {
+        origPrint();
+      }
+    };
+    return () => { window.print = origPrint; };
+  }, [receipt, handleManualPrint]);
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div style={{ color: 'red' }}>{error}</div>;
   if (!receipt) return null;
 
+  // Render a visible preview (not used for printing)
   const isDineIn = receipt.orders.some(o => o.type === 'dine_in');
   const checkedOutAt = new Date(receipt.checkedOutAt);
-
-  const paymentLabel =
-    receipt.paymentMethod === 'cash' ? 'Cash' :
-    receipt.paymentMethod === 'card' ? 'Card' : 'Mixed';
-
-  // Always use English restaurant name
+  const paymentLabel = receipt.paymentMethod === 'cash' ? 'Cash' : receipt.paymentMethod === 'card' ? 'Card' : 'Mixed';
   const restaurantName = config.restaurant_name_en || config.restaurant_name_zh || '';
   const termsSegments = config.receipt_terms ? parseQRCodes(config.receipt_terms) : [];
 
   return (
-    <>
-      <style>{`
-        @media print {
-          body > *:not(#receipt-print-root) { display: none !important; }
-          #receipt-print-root { display: block !important; }
-          #receipt-print-root .receipt-box {
-            display: block !important;
-            position: static !important;
-            margin: 0 !important;
-          }
-        }
-        #receipt-print-root { display: none; }
-        .receipt-box {
-          font-family: monospace;
-          max-width: 300px;
-          margin: 0 auto;
-          padding: 16px;
-          font-size: 12px;
-          color: #000;
-        }
-        .receipt-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
-        .receipt-items { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-        .receipt-items td { padding: 2px 0; }
-        .receipt-items .item-qty { text-align: center; width: 30px; }
-        .receipt-items .item-amount { text-align: right; }
-        .receipt-divider { border-top: 1px dashed #000; margin: 8px 0; }
-        .receipt-row { display: flex; justify-content: space-between; margin: 2px 0; }
-        .receipt-total { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; }
-        .receipt-footer { text-align: center; margin-top: 12px; border-top: 1px dashed #000; padding-top: 8px; font-size: 11px; }
-        .receipt-terms { text-align: center; margin-top: 8px; border-top: 1px dashed #000; padding-top: 8px; font-size: 10px; white-space: pre-line; }
-      `}</style>
-      <div id="receipt-content" className="receipt-box">
-        {/* Header: Restaurant Info */}
-        <div className="receipt-header">
-          {restaurantName && <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 2 }}>{restaurantName}</div>}
-          {config.restaurant_address && <div style={{ fontSize: 10 }}>{config.restaurant_address}</div>}
-          {config.restaurant_phone && <div style={{ fontSize: 10 }}>Tel: {config.restaurant_phone}</div>}
-          {config.restaurant_website && <div style={{ fontSize: 10 }}>{config.restaurant_website}</div>}
-          {config.restaurant_email && <div style={{ fontSize: 10 }}>{config.restaurant_email}</div>}
-          <div style={{ marginTop: 6 }}>
-            {isDineIn ? (
-              <>
-                <div>Table: {receipt.tableNumber}</div>
-                <div style={{ fontSize: 10 }}>Order: {String(receipt.checkoutId).slice(-8).toUpperCase()}</div>
-              </>
-            ) : (
-              <div>Pickup #: {receipt.orders[0]?.dailyOrderNumber}</div>
-            )}
-          </div>
-        </div>
-
-        {/* Items */}
-        <table className="receipt-items">
-          <tbody>
-            {receipt.orders.flatMap(order =>
-              order.items.map(item => (
-                <tr key={item._id}>
-                  <td>
-                    <div>{item.itemName}</div>
-                    {item.itemNameEn && item.itemNameEn !== item.itemName && (
-                      <div style={{ fontSize: 10, color: '#666' }}>{item.itemNameEn}</div>
-                    )}
-                    {item.selectedOptions && item.selectedOptions.length > 0 && (
-                      <div style={{ fontSize: 9, color: '#888', paddingLeft: 4 }}>
-                        {item.selectedOptions.map((opt, i) => (
-                          <span key={i}>{i > 0 ? ', ' : ''}{opt.choiceName}{opt.extraPrice > 0 ? ` +€${opt.extraPrice}` : ''}</span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="item-qty">x{item.quantity}</td>
-                  <td className="item-amount">€{(item.unitPrice * item.quantity).toFixed(2)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-
-        <div className="receipt-divider" />
-
-        {/* Total */}
-        <div className="receipt-total">
-          <span>Total</span>
-          <span>€{receipt.totalAmount.toFixed(2)}</span>
-        </div>
-
-        {/* Payment method */}
-        <div className="receipt-row" style={{ marginTop: 4 }}>
-          <span>Payment</span>
-          <span>{paymentLabel}</span>
-        </div>
-
-        {/* Mixed payment breakdown */}
-        {receipt.paymentMethod === 'mixed' && (
-          <>
-            <div className="receipt-row">
-              <span>Cash</span>
-              <span>€{(receipt.cashAmount ?? 0).toFixed(2)}</span>
-            </div>
-            <div className="receipt-row">
-              <span>Card</span>
-              <span>€{(receipt.cardAmount ?? 0).toFixed(2)}</span>
-            </div>
-          </>
-        )}
-
-        {/* Cash: received + change */}
-        {receipt.paymentMethod === 'cash' && cashReceived != null && cashReceived > 0 && (
-          <>
-            <div className="receipt-divider" />
-            <div className="receipt-row">
-              <span>Cash Received</span>
-              <span>€{cashReceived.toFixed(2)}</span>
-            </div>
-            {changeAmount != null && changeAmount > 0 && (
-              <div className="receipt-row" style={{ fontWeight: 'bold' }}>
-                <span>Change</span>
-                <span>€{changeAmount.toFixed(2)}</span>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Terms & Conditions */}
-        {termsSegments.length > 0 && (
-          <div className="receipt-terms">
-            {termsSegments.map((seg, idx) =>
-              seg.type === 'text' ? (
-                <span key={idx}>{seg.value}</span>
-              ) : (
-                <div key={idx} style={{ margin: '6px auto' }}>
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(seg.value)}`}
-                    alt="QR"
-                    width={100}
-                    height={100}
-                  />
-                </div>
-              )
-            )}
-          </div>
-        )}
-
-        {/* Footer: Date/Time */}
-        <div className="receipt-footer">
-          <div>{checkedOutAt.toLocaleString('en-GB')}</div>
-          <div style={{ marginTop: 4, fontSize: 10 }}>Thank you for dining with us!</div>
+    <div style={{ fontFamily: 'monospace', maxWidth: 300, margin: '0 auto', padding: 16, fontSize: 13, fontWeight: 'bold', color: '#000', background: '#fff', border: '1px solid #ddd', borderRadius: 8 }}>
+      <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 8 }}>
+        {restaurantName && <div style={{ fontSize: 15, marginBottom: 2 }}>{restaurantName}</div>}
+        {config.restaurant_address && <div style={{ fontSize: 10 }}>{config.restaurant_address}</div>}
+        {config.restaurant_phone && <div style={{ fontSize: 10 }}>Tel: {config.restaurant_phone}</div>}
+        <div style={{ marginTop: 6 }}>
+          {isDineIn ? (
+            <>
+              {receipt.tableNumber != null && receipt.tableNumber > 0 && <div style={{ fontSize: 18 }}>Table {receipt.tableNumber}</div>}
+              {(() => { const s = [...new Set(receipt.orders.map(o => o.seatNumber).filter(v => v != null && v > 0))].sort(); return s.length > 0 ? <div style={{ fontSize: 18 }}>Seat {s.join(', ')}</div> : null; })()}
+              {(() => { const n = receipt.orders.find(o => o.dineInOrderNumber)?.dineInOrderNumber; return n ? <div style={{ fontSize: 18 }}>Order #{n}</div> : null; })()}
+            </>
+          ) : (
+            <div style={{ fontSize: 18 }}>Pickup #{receipt.orders[0]?.dailyOrderNumber}</div>
+          )}
         </div>
       </div>
-    </>
+
+      {receipt.orders.flatMap(order => order.items.map(item => (
+        <div key={item._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #eee' }}>
+          <div style={{ flex: 1 }}>
+            <div>{item.itemName}</div>
+            {item.itemNameEn && item.itemNameEn !== item.itemName && <div style={{ fontSize: 10, color: '#666' }}>{item.itemNameEn}</div>}
+            {item.selectedOptions && item.selectedOptions.length > 0 && <div style={{ fontSize: 9, color: '#888' }}>{item.selectedOptions.map(o => o.choiceName).join(', ')}</div>}
+          </div>
+          <div style={{ whiteSpace: 'nowrap' }}>x{item.quantity} €{(item.unitPrice * item.quantity).toFixed(2)}</div>
+        </div>
+      )))}
+
+      <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15 }}><span>Total</span><span>€{receipt.totalAmount.toFixed(2)}</span></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}><span>Payment</span><span>{paymentLabel}</span></div>
+
+      {receipt.paymentMethod === 'cash' && cashReceived != null && cashReceived > 0 && (
+        <>
+          <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Cash Received</span><span>€{cashReceived.toFixed(2)}</span></div>
+          {changeAmount != null && changeAmount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Change</span><span>€{changeAmount.toFixed(2)}</span></div>}
+        </>
+      )}
+
+      {termsSegments.length > 0 && (
+        <div style={{ textAlign: 'center', borderTop: '1px dashed #000', marginTop: 8, paddingTop: 8, fontSize: 10, whiteSpace: 'pre-line' }}>
+          {termsSegments.map((seg, i) => seg.type === 'text' ? <span key={i}>{seg.value}</span> : (
+            <div key={i} style={{ margin: '6px auto' }}><img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(seg.value)}`} alt="QR" width={80} height={80} /></div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ textAlign: 'center', borderTop: '1px dashed #000', marginTop: 8, paddingTop: 8, fontSize: 11 }}>
+        {checkedOutAt.toLocaleString('en-GB')}
+        <div style={{ fontSize: 9, marginTop: 2 }}>Thank you for dining with us!</div>
+      </div>
+    </div>
   );
 }
+
+export { printViaIframe, buildReceiptHTML };

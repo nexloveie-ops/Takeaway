@@ -16,7 +16,7 @@ if (USE_GCS) {
  */
 export async function uploadFile(
   localFilePath: string,
-  folder: 'photos' | 'ar',
+  folder: 'photos' | 'ar' | 'logo',
   filename: string,
 ): Promise<string> {
   const destination = `${folder}/${filename}`;

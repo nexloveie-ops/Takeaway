@@ -10,6 +10,7 @@ import MenuView from './pages/customer/MenuView';
 import CartPage from './pages/customer/CartPage';
 import OrderStatusPage from './pages/customer/OrderStatusPage';
 import CashierOrder from './pages/cashier/CashierOrder';
+import ReprintReceipt from './pages/cashier/ReprintReceipt';
 import DineInOrderBoard from './pages/cashier/DineInOrderBoard';
 import TakeoutOrderList from './pages/cashier/TakeoutOrderList';
 import TakeoutDelivery from './pages/cashier/TakeoutDelivery';
@@ -51,6 +52,8 @@ export default function App() {
           <Route path="/cashier" element={<RequireAuth><CashierLayout /></RequireAuth>}>
             <Route index element={<DineInOrderBoard />} />
             <Route path="order" element={<CashierOrder />} />
+            <Route path="reprint" element={<ReprintReceipt />} />
+            <Route path="inventory" element={<InventoryManager />} />
             <Route path="takeout" element={<TakeoutOrderList />} />
             <Route path="delivery" element={<TakeoutDelivery />} />
             <Route path="checkout/:tableNumber" element={<CheckoutFlow />} />

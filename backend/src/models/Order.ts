@@ -18,6 +18,7 @@ const OrderSchema = new mongoose.Schema({
   tableNumber: { type: Number },
   seatNumber: { type: Number },
   dailyOrderNumber: { type: Number },
+  dineInOrderNumber: { type: String },
   status: { type: String, enum: ['pending', 'checked_out', 'completed'], default: 'pending' },
   items: [OrderItemSubdocSchema],
   completedAt: { type: Date },

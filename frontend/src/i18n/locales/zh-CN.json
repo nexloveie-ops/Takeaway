@@ -90,7 +90,8 @@
     "amountMismatch": "现金与刷卡金额之和必须等于总额",
     "cashReceived": "实收",
     "change": "找零",
-    "insufficientCash": "实收金额不足"
+    "insufficientCash": "实收金额不足",
+    "reprint": "重印小票"
   },
   "admin": {
     "title": "管理后台",

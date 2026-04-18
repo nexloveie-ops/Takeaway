@@ -109,6 +109,12 @@ export function createOrdersRouter(io: SocketIOServer): Router {
       if (type === 'dine_in') {
         orderData.tableNumber = tableNumber;
         orderData.seatNumber = seatNumber;
+        // Generate 6-digit order number: HHmmss
+        const now = new Date();
+        orderData.dineInOrderNumber =
+          String(now.getHours()).padStart(2, '0') +
+          String(now.getMinutes()).padStart(2, '0') +
+          String(now.getSeconds()).padStart(2, '0');
       }
 
       if (type === 'takeout') {
@@ -315,6 +321,36 @@ export function createOrdersRouter(io: SocketIOServer): Router {
       io.emit('order:updated', order);
 
       res.json(order);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // DELETE /api/orders/:id — Cancel/delete a pending order
+  router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw createAppError('VALIDATION_ERROR', 'Invalid order ID');
+      }
+
+      const order = await Order.findById(id);
+      if (!order) {
+        throw createAppError('NOT_FOUND', 'Order not found');
+      }
+
+      if (order.status !== 'pending') {
+        throw createAppError('ORDER_NOT_MODIFIABLE', 'Only pending orders can be cancelled', {
+          currentStatus: order.status,
+        });
+      }
+
+      await Order.findByIdAndDelete(id);
+
+      // Emit Socket.IO event
+      io.emit('order:cancelled', { orderId: id, tableNumber: order.tableNumber });
+
+      res.json({ message: 'Order cancelled successfully' });
     } catch (err) {
       next(err);
     }

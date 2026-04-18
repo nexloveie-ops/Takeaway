@@ -188,6 +188,9 @@ export default function CheckoutFlow() {
           <button className="btn btn-outline" onClick={() => navigate('/cashier')} style={{ marginBottom: 20 }}>
             {t('common.back')}
           </button>
+          <button className="btn btn-primary" onClick={() => window.print()} style={{ marginBottom: 20, marginLeft: 8 }}>
+            🖨️ {t('cashier.printReceipt')}
+          </button>
         </div>
         <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} />
       </div>

@@ -90,7 +90,8 @@
     "amountMismatch": "Cash + Card amount must equal total",
     "cashReceived": "Cash Received",
     "change": "Change",
-    "insufficientCash": "Insufficient cash amount"
+    "insufficientCash": "Insufficient cash amount",
+    "reprint": "Reprint"
   },
   "admin": {
     "title": "Admin Panel",

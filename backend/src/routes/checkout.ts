@@ -191,10 +191,79 @@ export function createCheckoutRouter(io: SocketIOServer): Router {
           tableNumber: o.tableNumber,
           seatNumber: o.seatNumber,
           dailyOrderNumber: o.dailyOrderNumber,
+          dineInOrderNumber: (o as Record<string, unknown>).dineInOrderNumber,
           status: o.status,
           items: o.items,
         })),
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/checkout/search?orderNumber=123456&date=2026-04-15
+  // If orderNumber is empty, return all checkouts for the given date
+  router.get('/search', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { orderNumber, date } = req.query;
+
+      const dateStr = (date as string) || new Date().toISOString().slice(0, 10);
+      const startOfDay = new Date(dateStr + 'T00:00:00.000Z');
+      const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+
+      let orderFilter: Record<string, unknown>;
+
+      if (orderNumber && String(orderNumber).trim()) {
+        // Search by order number
+        const num = Number(orderNumber);
+        orderFilter = {
+          status: { $in: ['checked_out', 'completed'] },
+          createdAt: { $gte: startOfDay, $lte: endOfDay },
+          $or: [
+            { dineInOrderNumber: String(orderNumber).trim() },
+            ...(Number.isInteger(num) ? [{ dailyOrderNumber: num }] : []),
+          ],
+        };
+      } else {
+        // No order number: return all checked-out orders for the date
+        orderFilter = {
+          status: { $in: ['checked_out', 'completed'] },
+          createdAt: { $gte: startOfDay, $lte: endOfDay },
+        };
+      }
+
+      const orders = await Order.find(orderFilter).sort({ createdAt: -1 }).lean();
+      if (orders.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const orderIds = orders.map(o => o._id);
+      const checkouts = await Checkout.find({ orderIds: { $in: orderIds } }).sort({ checkedOutAt: -1 }).lean();
+
+      const results = checkouts.map(c => ({
+        checkoutId: c._id,
+        type: c.type,
+        tableNumber: c.tableNumber,
+        totalAmount: c.totalAmount,
+        paymentMethod: c.paymentMethod,
+        cashAmount: c.cashAmount,
+        cardAmount: c.cardAmount,
+        checkedOutAt: c.checkedOutAt,
+        orders: orders
+          .filter(o => c.orderIds.some((cid: mongoose.Types.ObjectId) => cid.toString() === o._id.toString()))
+          .map(o => ({
+            _id: o._id,
+            type: o.type,
+            tableNumber: o.tableNumber,
+            seatNumber: o.seatNumber,
+            dailyOrderNumber: o.dailyOrderNumber,
+            dineInOrderNumber: (o as Record<string, unknown>).dineInOrderNumber,
+            items: o.items,
+          })),
+      }));
+
+      res.json(results);
     } catch (err) {
       next(err);
     }

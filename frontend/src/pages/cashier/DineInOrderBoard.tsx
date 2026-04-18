@@ -42,8 +42,22 @@ export default function DineInOrderBoard() {
     socket.on('order:new', fetchOrders);
     socket.on('order:updated', fetchOrders);
     socket.on('order:checked-out', fetchOrders);
+    socket.on('order:cancelled', fetchOrders);
     return () => { socket.disconnect(); };
   }, [fetchOrders]);
+
+  const handleCancelOrder = async (orderId: string) => {
+    if (!confirm('确认取消此订单？Cancel this order?')) return;
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        fetchOrders();
+      }
+    } catch { /* ignore */ }
+  };
 
   const selected = tables.find(t2 => t2.tableNumber === selectedTable);
 
@@ -82,6 +96,16 @@ export default function DineInOrderBoard() {
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
             <OrderDetail orders={selected.orders} />
+            {/* Cancel buttons per order */}
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {selected.orders.map(o => (
+                <button key={o._id} className="btn btn-ghost"
+                  onClick={() => handleCancelOrder(o._id)}
+                  style={{ fontSize: 12, color: 'var(--red-primary)', textAlign: 'left', padding: '6px 8px', border: '1px dashed var(--red-primary)', borderRadius: 6 }}>
+                  ✕ 取消 {o.seatNumber && o.seatNumber > 0 ? `座位${o.seatNumber}的订单` : `订单 ${o._id.slice(-6)}`}
+                </button>
+              ))}
+            </div>
           </div>
           <div style={{ padding: '12px 16px', borderTop: '2px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 16 }}>
             <span>{t('cashier.total')}</span>

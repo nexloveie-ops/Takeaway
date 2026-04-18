@@ -1,11 +1,20 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import os from 'os';
+import path from 'path';
+import fs from 'fs';
 import { Admin } from '../models/Admin';
 import { SystemConfig } from '../models/SystemConfig';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { createAppError } from '../middleware/errorHandler';
+import { uploadFile } from '../storage';
 
 const router = Router();
+const tempUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 5 * 1024 * 1024 } });
+const UPLOAD_BASE = path.resolve(__dirname, '../../uploads');
+const LOGO_DIR = path.join(UPLOAD_BASE, 'logo');
+fs.mkdirSync(LOGO_DIR, { recursive: true });
 
 // GET /api/admin/config — Get all system configs
 router.get('/config', async (_req: Request, res: Response, next: NextFunction) => {
@@ -47,6 +56,41 @@ router.put('/config', authMiddleware, requirePermission('config:update'), async 
     next(err);
   }
 });
+
+// POST /api/admin/logo — Upload restaurant logo
+router.post('/logo',
+  tempUpload.single('logo'),
+  authMiddleware,
+  requirePermission('config:update'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.file) {
+        throw createAppError('VALIDATION_ERROR', 'No file provided');
+      }
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      if (!['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'].includes(ext)) {
+        fs.unlink(req.file.path, () => {});
+        throw createAppError('VALIDATION_ERROR', 'Invalid image format');
+      }
+      const filename = `logo${ext}`;
+      const localDest = path.join(LOGO_DIR, filename);
+      fs.copyFileSync(req.file.path, localDest);
+      const logoUrl = await uploadFile(localDest, 'logo' as 'photos', filename);
+      fs.unlink(req.file.path, () => {});
+
+      // Save logo URL to config
+      await SystemConfig.findOneAndUpdate(
+        { key: 'restaurant_logo' },
+        { key: 'restaurant_logo', value: logoUrl },
+        { upsert: true, new: true },
+      );
+
+      res.json({ logoUrl });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // GET /api/admin/users — List admins (requires auth + admin:users)
 router.get('/users', authMiddleware, requirePermission('admin:users'), async (_req: Request, res: Response, next: NextFunction) => {

@@ -3,30 +3,31 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import OptionSelectModal, { type OptionGroup } from '../../components/customer/OptionSelectModal';
 import type { CartItemOption } from '../../context/CartContext';
+import ReceiptPrint from '../../components/cashier/ReceiptPrint';
 
 interface Translation { locale: string; name: string; description?: string; }
 interface Category { _id: string; sortOrder: number; translations: Translation[]; }
 interface MenuItem {
-  _id: string; categoryId: string; price: number; calories?: number;
-  avgWaitMinutes?: number; photoUrl?: string; isSoldOut?: boolean;
+  _id: string; categoryId: string; price: number;
   translations: Translation[];
   optionGroups?: OptionGroup[];
+  isSoldOut?: boolean;
 }
 interface OrderItemOption {
   groupName: Record<string, string>;
   choiceName: Record<string, string>;
   extraPrice: number;
 }
-interface OrderItem {
-  menuItemId: string; name: string; price: number; qty: number;
+interface OrderLine {
+  id: string;
+  menuItemId: string;
+  name: string;
+  price: number;
   options?: OrderItemOption[];
-  _key: string;
 }
 
-function orderItemKey(menuItemId: string, options?: OrderItemOption[]): string {
-  if (!options || options.length === 0) return menuItemId;
-  return menuItemId + '|' + JSON.stringify(options);
-}
+let lineIdCounter = 0;
+function nextLineId() { return `line-${++lineIdCounter}-${Date.now()}`; }
 
 export default function CashierOrder() {
   const { t, i18n } = useTranslation();
@@ -34,29 +35,38 @@ export default function CashierOrder() {
   const lang = i18n.language;
 
   const [categories, setCategories] = useState<Category[]>([]);
-  const [items, setItems] = useState<MenuItem[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [activeCat, setActiveCat] = useState('');
   const [search, setSearch] = useState('');
-  const [order, setOrder] = useState<OrderItem[]>([]);
-  const [tableNumber, setTableNumber] = useState(1);
-  const [seatNumber, setSeatNumber] = useState(1);
+  const [order, setOrder] = useState<OrderLine[]>([]);
   const [orderType, setOrderType] = useState<'dine_in' | 'takeout'>('dine_in');
-  const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [optionModal, setOptionModal] = useState<MenuItem | null>(null);
+
+  // Payment modal state
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed'>('cash');
+  const [cashReceived, setCashReceived] = useState('');
+  const [mixedCash, setMixedCash] = useState('');
+  const [mixedCard, setMixedCard] = useState('');
+  const [payingTotal, setPayingTotal] = useState(0);
+  const [paying, setPaying] = useState(false);
+
+  // Receipt state
+  const [checkoutId, setCheckoutId] = useState<string | null>(null);
+  const [checkoutMeta, setCheckoutMeta] = useState<{ total: number; cashReceived: number; change: number } | null>(null);
 
   const fetchData = useCallback(async () => {
     const [catRes, itemRes] = await Promise.all([
       fetch(`/api/menu/categories?lang=${lang}`),
-      fetch(`/api/menu/items`),
+      fetch('/api/menu/items'),
     ]);
     if (catRes.ok) {
       const cats: Category[] = await catRes.json();
       setCategories(cats);
       if (cats.length > 0 && !activeCat) setActiveCat(cats[0]._id);
     }
-    if (itemRes.ok) setItems(await itemRes.json());
+    if (itemRes.ok) setMenuItems(await itemRes.json());
   }, [lang]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -67,143 +77,145 @@ export default function CashierOrder() {
   };
 
   const filteredItems = useMemo(() => {
-    let list = items.filter(i => i.categoryId === activeCat);
+    let list = menuItems.filter(i => i.categoryId === activeCat);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      list = items.filter(i =>
-        i.translations.some(t2 => t2.name.toLowerCase().includes(q))
-      );
+      list = menuItems.filter(i => i.translations.some(t2 => t2.name.toLowerCase().includes(q)));
     }
     return list;
-  }, [items, activeCat, search]);
+  }, [menuItems, activeCat, search]);
 
   const addToOrder = (item: MenuItem) => {
     if (item.isSoldOut) return;
-    if (item.optionGroups && item.optionGroups.length > 0) {
-      setOptionModal(item);
-      return;
-    }
-    const name = getName(item.translations);
-    const key = orderItemKey(item._id);
-    setOrder(prev => {
-      const existing = prev.find(o => o._key === key);
-      if (existing) return prev.map(o => o._key === key ? { ...o, qty: o.qty + 1 } : o);
-      return [...prev, { menuItemId: item._id, name, price: item.price, qty: 1, _key: key }];
-    });
+    if (item.optionGroups && item.optionGroups.length > 0) { setOptionModal(item); return; }
+    setOrder(prev => [...prev, { id: nextLineId(), menuItemId: item._id, name: getName(item.translations), price: item.price }]);
   };
 
   const addToOrderWithOptions = (item: MenuItem, cartOptions: CartItemOption[]) => {
-    const name = getName(item.translations);
-    const options: OrderItemOption[] = cartOptions.map(o => ({
-      groupName: o.groupName,
-      choiceName: o.choiceName,
-      extraPrice: o.extraPrice,
-    }));
-    const key = orderItemKey(item._id, options);
-    setOrder(prev => {
-      const existing = prev.find(o => o._key === key);
-      if (existing) return prev.map(o => o._key === key ? { ...o, qty: o.qty + 1 } : o);
-      return [...prev, { menuItemId: item._id, name, price: item.price, qty: 1, options, _key: key }];
-    });
+    const options: OrderItemOption[] = cartOptions.map(o => ({ groupName: o.groupName, choiceName: o.choiceName, extraPrice: o.extraPrice }));
+    setOrder(prev => [...prev, { id: nextLineId(), menuItemId: item._id, name: getName(item.translations), price: item.price, options }]);
     setOptionModal(null);
   };
 
-  const changeQty = (key: string, delta: number) => {
-    setOrder(prev => {
-      const item = prev.find(o => o._key === key);
-      if (!item) return prev;
-      const newQty = item.qty + delta;
-      if (newQty <= 0) return prev.filter(o => o._key !== key);
-      return prev.map(o => o._key === key ? { ...o, qty: newQty } : o);
-    });
-  };
-
+  const removeLine = (lineId: string) => { setOrder(prev => prev.filter(o => o.id !== lineId)); };
   const clearOrder = () => setOrder([]);
 
-  const totalAmount = order.reduce((s, o) => {
-    const optExtra = (o.options || []).reduce((sum, opt) => sum + opt.extraPrice, 0);
-    return s + (o.price + optExtra) * o.qty;
-  }, 0);
-  const totalItems = order.reduce((s, o) => s + o.qty, 0);
+  const totalAmount = order.reduce((s, o) => s + o.price + (o.options || []).reduce((sum, opt) => sum + opt.extraPrice, 0), 0);
+  const getItemCount = (menuItemId: string) => order.filter(o => o.menuItemId === menuItemId).length;
 
-  const getItemQty = (menuItemId: string) => order.filter(o => o.menuItemId === menuItemId).reduce((s, o) => s + o.qty, 0);
-
-  const handleSubmit = async () => {
+  // Open payment modal (no API call yet)
+  const handleOpenPayment = () => {
     if (order.length === 0) return;
-    setSubmitting(true);
+    setPayingTotal(totalAmount);
+    setCashReceived(totalAmount.toFixed(2));
+    setPaymentMethod('cash');
     setError('');
-    setSuccess('');
-    try {
-      const body: Record<string, unknown> = {
-        type: orderType,
-        items: order.map(o => {
-          const item: Record<string, unknown> = { menuItemId: o.menuItemId, quantity: o.qty };
-          if (o.options && o.options.length > 0) {
-            // We need groupId/choiceId for the backend. We stored full name maps but need IDs.
-            // For cashier, we look up the original menu item to find IDs from names.
-            const menuItem = items.find(mi => mi._id === o.menuItemId);
-            if (menuItem?.optionGroups) {
-              item.selectedOptions = o.options.map(opt => {
-                // Find group by matching name
-                const group = menuItem.optionGroups!.find(g =>
-                  g.translations.some(t2 => Object.values(opt.groupName).includes(t2.name))
-                );
-                const choice = group?.choices.find(c =>
-                  c.translations.some(t2 => Object.values(opt.choiceName).includes(t2.name))
-                );
-                return { groupId: group?._id || '', choiceId: choice?._id || '' };
-              });
-            }
-          }
-          return item;
-        }),
-      };
-      if (orderType === 'dine_in') {
-        body.tableNumber = tableNumber;
-        body.seatNumber = seatNumber;
+    setShowPayment(true);
+  };
+
+  // Build grouped items for API
+  const buildGroupedItems = () => {
+    const grouped = new Map<string, { menuItemId: string; quantity: number; selectedOptions?: { groupId: string; choiceId: string }[] }>();
+    for (const line of order) {
+      const mi = menuItems.find(m => m._id === line.menuItemId);
+      let selOpts: { groupId: string; choiceId: string }[] | undefined;
+      if (line.options && line.options.length > 0 && mi?.optionGroups) {
+        selOpts = line.options.map(opt => {
+          const group = mi.optionGroups!.find(g => g.translations.some(t2 => Object.values(opt.groupName).includes(t2.name)));
+          const choice = group?.choices.find(c => c.translations.some(t2 => Object.values(opt.choiceName).includes(t2.name)));
+          return { groupId: group?._id || '', choiceId: choice?._id || '' };
+        });
       }
-      const res = await fetch('/api/orders', {
+      const key = line.menuItemId + '|' + JSON.stringify(selOpts || []);
+      const existing = grouped.get(key);
+      if (existing) existing.quantity++;
+      else grouped.set(key, { menuItemId: line.menuItemId, quantity: 1, selectedOptions: selOpts });
+    }
+    return [...grouped.values()];
+  };
+
+  // Confirm: create order + checkout in one go
+  const cashReceivedNum = parseFloat(cashReceived) || 0;
+  const changeAmount = paymentMethod === 'cash' ? Math.max(0, cashReceivedNum - payingTotal) : 0;
+
+  const handlePay = async () => {
+    setPaying(true);
+    setError('');
+    try {
+      // Step 1: Create order
+      const orderBody: Record<string, unknown> = { type: orderType, items: buildGroupedItems() };
+      if (orderType === 'dine_in') { orderBody.tableNumber = 0; orderBody.seatNumber = 0; }
+
+      const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
+        body: JSON.stringify(orderBody),
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => null);
-        throw new Error(d?.error?.message || 'Failed');
-      }
-      const data = await res.json();
-      const orderNum = data.dailyOrderNumber ? `#${data.dailyOrderNumber}` : `T${tableNumber}-S${seatNumber}`;
-      setSuccess(`下单成功 ${orderNum}`);
+      if (!orderRes.ok) { const d = await orderRes.json().catch(() => null); throw new Error(d?.error?.message || 'Failed'); }
+      const orderData = await orderRes.json();
+
+      // Step 2: Checkout immediately
+      const checkoutBody: Record<string, unknown> = { paymentMethod };
+      if (paymentMethod === 'cash') checkoutBody.cashAmount = payingTotal;
+      else if (paymentMethod === 'card') checkoutBody.cardAmount = payingTotal;
+      else { checkoutBody.cashAmount = Number(mixedCash); checkoutBody.cardAmount = Number(mixedCard); }
+
+      const checkoutRes = await fetch(`/api/checkout/seat/${orderData._id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(checkoutBody),
+      });
+      if (!checkoutRes.ok) { const d = await checkoutRes.json().catch(() => null); throw new Error(d?.error?.message || 'Checkout failed'); }
+      const checkoutData = await checkoutRes.json();
+      setCheckoutId(checkoutData._id);
+      setCheckoutMeta({ total: payingTotal, cashReceived: cashReceivedNum, change: changeAmount });
+      setShowPayment(false);
       setOrder([]);
-      setTimeout(() => setSuccess(''), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed');
     } finally {
-      setSubmitting(false);
+      setPaying(false);
     }
   };
 
+  const handleCloseReceipt = () => {
+    setCheckoutId(null);
+    setCheckoutMeta(null);
+  };
+
+  // Receipt screen
+  if (checkoutId) {
+    return (
+      <div style={{ maxWidth: 500, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', padding: 20 }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>✅</div>
+          <h2 style={{ color: 'var(--green)', marginBottom: 12 }}>{t('cashier.checkoutSuccess')}</h2>
+          {checkoutMeta && paymentMethod === 'cash' && checkoutMeta.change > 0 && (
+            <div style={{ background: '#FFF3E0', border: '2px solid #FF9800', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>{t('cashier.total')}: €{checkoutMeta.total.toFixed(2)}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>{t('cashier.cashReceived')}: €{checkoutMeta.cashReceived.toFixed(2)}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#E65100' }}>{t('cashier.change')}: €{checkoutMeta.change.toFixed(2)}</div>
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={handleCloseReceipt} style={{ marginBottom: 20 }}>继续点单</button>
+          <button className="btn btn-outline" onClick={() => window.print()} style={{ marginBottom: 20, marginLeft: 8 }}>
+            🖨️ 打印小票
+          </button>
+        </div>
+        <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden', gap: 0 }}>
-
       {/* Left: Category Sidebar */}
-      <div style={{
-        width: 110, flexShrink: 0, background: 'var(--bg-white)',
-        borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
-        overflowY: 'auto', padding: '8px 0',
-      }}>
+      <div style={{ width: 110, flexShrink: 0, background: 'var(--bg-white)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '8px 0' }}>
         {categories.map(cat => {
           const isActive = activeCat === cat._id;
           return (
             <button key={cat._id} onClick={() => { setActiveCat(cat._id); setSearch(''); }}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                padding: '14px 8px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: isActive ? 700 : 500,
-                color: isActive ? 'var(--red-primary)' : 'var(--text-secondary)',
-                background: isActive ? 'var(--red-light)' : 'transparent',
-                borderLeft: isActive ? '4px solid var(--red-primary)' : '4px solid transparent',
-                minHeight: 56, transition: 'all 0.12s',
-              }}>
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '14px 8px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--red-primary)' : 'var(--text-secondary)', background: isActive ? 'var(--red-light)' : 'transparent', borderLeft: isActive ? '4px solid var(--red-primary)' : '4px solid transparent', minHeight: 56 }}>
               {getName(cat.translations)}
             </button>
           );
@@ -213,177 +225,129 @@ export default function CashierOrder() {
       {/* Center: Menu Grid */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '10px 12px', background: 'var(--bg-white)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <input className="input" placeholder={`🔍  ${t('common.search')}...`} value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ width: '100%', padding: '10px 14px', fontSize: 14 }} />
+          <input className="input" placeholder={`🔍  ${t('common.search')}...`} value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', padding: '10px 14px', fontSize: 14 }} />
         </div>
-
         <div style={{ padding: '10px 12px 6px', fontSize: 14, fontWeight: 700, background: 'var(--bg)', flexShrink: 0 }}>
           {search ? `搜索: "${search}"` : getName(categories.find(c => c._id === activeCat)?.translations || [])}
           <span style={{ fontWeight: 400, color: 'var(--text-light)', marginLeft: 8 }}>({filteredItems.length})</span>
         </div>
-
-        <div style={{
-          flex: 1, overflowY: 'auto', padding: '8px 10px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-          gap: 8, alignContent: 'start',
-        }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, alignContent: 'start' }}>
           {filteredItems.map(item => {
-            const qty = getItemQty(item._id);
-            const name = getName(item.translations);
+            const qty = getItemCount(item._id);
             return (
-              <div key={item._id} onClick={() => addToOrder(item)}
-                style={{
-                  background: 'var(--bg-white)',
-                  border: qty > 0 ? '2px solid var(--red-primary)' : '1px solid var(--border)',
-                  borderRadius: 8, padding: '10px 8px',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
-                  cursor: item.isSoldOut ? 'not-allowed' : 'pointer',
-                  opacity: item.isSoldOut ? 0.4 : 1,
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                  minHeight: 80, justifyContent: 'center', position: 'relative',
-                  userSelect: 'none', transition: 'all 0.1s',
-                }}>
-                {qty > 0 && (
-                  <span style={{
-                    position: 'absolute', top: -6, left: -6,
-                    width: 22, height: 22, borderRadius: '50%',
-                    background: 'var(--red-primary)', color: '#fff',
-                    fontSize: 12, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 1px 4px rgba(211,47,47,0.4)',
-                  }}>{qty}</span>
-                )}
-                {item.isSoldOut && (
-                  <span style={{
-                    position: 'absolute', top: 4, right: 4,
-                    fontSize: 9, padding: '1px 5px', borderRadius: 3,
-                    fontWeight: 600, background: '#9E9E9E', color: '#fff',
-                  }}>售罄</span>
-                )}
-                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3, marginBottom: 4,
-                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                }}>{name}</div>
+              <div key={item._id} onClick={() => addToOrder(item)} style={{ background: 'var(--bg-white)', border: qty > 0 ? '2px solid var(--red-primary)' : '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', cursor: item.isSoldOut ? 'not-allowed' : 'pointer', opacity: item.isSoldOut ? 0.4 : 1, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minHeight: 80, justifyContent: 'center', position: 'relative', userSelect: 'none' }}>
+                {qty > 0 && <span style={{ position: 'absolute', top: -6, left: -6, width: 22, height: 22, borderRadius: '50%', background: 'var(--red-primary)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{qty}</span>}
+                {item.isSoldOut && <span style={{ position: 'absolute', top: 4, right: 4, fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 600, background: '#9E9E9E', color: '#fff' }}>售罄</span>}
+                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3, marginBottom: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{getName(item.translations)}</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--red-primary)' }}>€{item.price}</div>
-                {item.optionGroups && item.optionGroups.length > 0 && (
-                  <div style={{ fontSize: 9, color: 'var(--text-light)', marginTop: 2 }}>⚙ {t('customer.selectOptions')}</div>
-                )}
+                {item.optionGroups && item.optionGroups.length > 0 && <div style={{ fontSize: 9, color: 'var(--text-light)', marginTop: 2 }}>⚙ {t('customer.selectOptions')}</div>}
               </div>
             );
           })}
-          {filteredItems.length === 0 && (
-            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: 'var(--text-light)' }}>
-              暂无菜品
-            </div>
-          )}
         </div>
       </div>
 
       {/* Right: Order Panel */}
-      <div style={{
-        width: 320, flexShrink: 0, background: 'var(--bg-white)',
-        borderLeft: '2px solid var(--border)', display: 'flex', flexDirection: 'column',
-      }}>
+      <div style={{ width: 320, flexShrink: 0, background: 'var(--bg-white)', borderLeft: '2px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontSize: 15, fontWeight: 700 }}>🧾 点单</h3>
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={clearOrder}>清空</button>
         </div>
-
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => setOrderType('dine_in')} style={{
-              flex: 1, fontSize: 12, padding: '6px 0',
-              background: orderType === 'dine_in' ? 'var(--red-primary)' : 'var(--bg)',
-              color: orderType === 'dine_in' ? '#fff' : 'var(--text-secondary)',
-              border: '1px solid var(--border)',
-            }}>堂食</button>
-            <button className="btn" onClick={() => setOrderType('takeout')} style={{
-              flex: 1, fontSize: 12, padding: '6px 0',
-              background: orderType === 'takeout' ? 'var(--red-primary)' : 'var(--bg)',
-              color: orderType === 'takeout' ? '#fff' : 'var(--text-secondary)',
-              border: '1px solid var(--border)',
-            }}>外卖</button>
+            <button className="btn" onClick={() => setOrderType('dine_in')} style={{ flex: 1, fontSize: 12, padding: '6px 0', background: orderType === 'dine_in' ? 'var(--red-primary)' : 'var(--bg)', color: orderType === 'dine_in' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>堂食</button>
+            <button className="btn" onClick={() => setOrderType('takeout')} style={{ flex: 1, fontSize: 12, padding: '6px 0', background: orderType === 'takeout' ? 'var(--red-primary)' : 'var(--bg)', color: orderType === 'takeout' ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>外卖</button>
           </div>
-          {orderType === 'dine_in' && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11, color: 'var(--text-light)' }}>{t('cashier.table')}</label>
-                <input className="input" type="number" min={1} value={tableNumber}
-                  onChange={e => setTableNumber(Number(e.target.value))}
-                  style={{ width: '100%', padding: '6px 8px', fontSize: 14, textAlign: 'center' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11, color: 'var(--text-light)' }}>{t('cashier.seat')}</label>
-                <input className="input" type="number" min={1} value={seatNumber}
-                  onChange={e => setSeatNumber(Number(e.target.value))}
-                  style={{ width: '100%', padding: '6px 8px', fontSize: 14, textAlign: 'center' }} />
-              </div>
-            </div>
-          )}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
           {order.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-light)', gap: 8 }}>
               <span style={{ fontSize: 36, opacity: 0.3 }}>📋</span>
               <span style={{ fontSize: 13 }}>点击左侧菜品加入</span>
             </div>
-          ) : order.map(o => {
-            const optExtra = (o.options || []).reduce((sum, opt) => sum + opt.extraPrice, 0);
+          ) : order.map((line, idx) => {
+            const optExtra = (line.options || []).reduce((sum, opt) => sum + opt.extraPrice, 0);
             return (
-              <div key={o._key} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 16px', borderBottom: '1px solid #f0f0f0',
-              }}>
+              <div key={line.id} onClick={() => removeLine(line.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 16px', borderBottom: '1px solid #f0f0f0', cursor: 'pointer', transition: 'background 0.1s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#FFEBEE')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                <span style={{ fontSize: 11, color: 'var(--text-light)', minWidth: 20 }}>{idx + 1}.</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.name}</div>
-                  {o.options && o.options.length > 0 && (
-                    <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 1 }}>
-                      {o.options.map((opt, i) => (
-                        <span key={i}>
-                          {i > 0 && ' · '}
-                          {opt.groupName[lang] || Object.values(opt.groupName)[0]}: {opt.choiceName[lang] || Object.values(opt.choiceName)[0]}
-                          {opt.extraPrice > 0 && ` +€${opt.extraPrice}`}
-                        </span>
-                      ))}
+                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{line.name}</div>
+                  {line.options && line.options.length > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--text-light)' }}>
+                      {line.options.map((opt, i) => <span key={i}>{i > 0 && ' · '}{opt.choiceName[lang] || Object.values(opt.choiceName)[0]}{opt.extraPrice > 0 && ` +€${opt.extraPrice}`}</span>)}
                     </div>
                   )}
-                  <div style={{ fontSize: 12, color: 'var(--text-light)' }}>€{o.price}{optExtra > 0 && ` +€${optExtra}`}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
-                  <button onClick={() => changeQty(o._key, -1)} style={{
-                    width: 30, height: 30, border: 'none', background: 'var(--bg)',
-                    fontSize: 16, fontWeight: 700, color: 'var(--red-primary)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>−</button>
-                  <span style={{ width: 30, textAlign: 'center', fontSize: 14, fontWeight: 700 }}>{o.qty}</span>
-                  <button onClick={() => changeQty(o._key, 1)} style={{
-                    width: 30, height: 30, border: 'none', background: 'var(--bg)',
-                    fontSize: 16, fontWeight: 700, color: 'var(--green)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>+</button>
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--red-primary)', minWidth: 55, textAlign: 'right' }}>
-                  €{((o.price + optExtra) * o.qty).toFixed(2)}
-                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red-primary)', minWidth: 45, textAlign: 'right' }}>€{(line.price + optExtra).toFixed(2)}</span>
+                <span style={{ fontSize: 14, color: 'var(--text-light)', marginLeft: 4 }}>✕</span>
               </div>
             );
           })}
         </div>
 
         <div style={{ borderTop: '2px solid var(--border)', padding: '12px 16px', flexShrink: 0 }}>
-          {success && <div style={{ color: 'var(--green)', fontSize: 13, marginBottom: 8, fontWeight: 600 }}>✓ {success}</div>}
           {error && <div style={{ color: 'var(--red-primary)', fontSize: 13, marginBottom: 8 }}>{error}</div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>合计 · {totalItems} 件</span>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>合计 · {order.length} 件</span>
             <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--red-primary)', fontFamily: "'Noto Serif SC', serif" }}>€{totalAmount.toFixed(2)}</span>
           </div>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || order.length === 0}
-            style={{ width: '100%', fontSize: 15, padding: '12px 0', letterSpacing: 1 }}>
-            {submitting ? t('common.loading') : '下单'}
+          <button className="btn btn-primary" onClick={handleOpenPayment} disabled={order.length === 0} style={{ width: '100%', fontSize: 15, padding: '12px 0', letterSpacing: 1 }}>
+            下单结账
           </button>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPayment && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: 380, maxWidth: '90%' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, textAlign: 'center' }}>{t('cashier.checkout')}</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 20, marginBottom: 16 }}>
+              <span>{t('cashier.total')}</span>
+              <span style={{ color: 'var(--red-primary)' }}>€{payingTotal.toFixed(2)}</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              {(['cash', 'card', 'mixed'] as const).map(m => (
+                <button key={m} onClick={() => { setPaymentMethod(m); if (m === 'cash') setCashReceived(payingTotal.toFixed(2)); }} className="btn" style={{ flex: 1, background: paymentMethod === m ? 'var(--red-primary)' : 'var(--bg)', color: paymentMethod === m ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                  {t(`cashier.${m}`)}
+                </button>
+              ))}
+            </div>
+
+            {paymentMethod === 'cash' && (
+              <div style={{ padding: 10, background: 'var(--bg)', borderRadius: 8, marginBottom: 12 }}>
+                <label style={{ fontSize: 12, color: 'var(--text-light)', display: 'block', marginBottom: 4 }}>{t('cashier.cashReceived')}</label>
+                <input className="input" type="number" step="0.01" value={cashReceived} onChange={e => setCashReceived(e.target.value)}
+                  style={{ width: '100%', fontSize: 18, fontWeight: 700, padding: '8px 10px', textAlign: 'right' }} />
+                {cashReceivedNum > 0 && (
+                  <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 6, background: cashReceivedNum >= payingTotal ? '#E8F5E9' : '#FFEBEE' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{t('cashier.change')}</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: cashReceivedNum >= payingTotal ? 'var(--green)' : 'var(--red-primary)' }}>€{changeAmount.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {paymentMethod === 'mixed' && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input className="input" placeholder={t('cashier.cashAmount')} value={mixedCash} onChange={e => setMixedCash(e.target.value)} type="number" />
+                <input className="input" placeholder={t('cashier.cardAmount')} value={mixedCard} onChange={e => setMixedCard(e.target.value)} type="number" />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowPayment(false)}>{t('common.cancel')}</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handlePay}
+                disabled={paying || (paymentMethod === 'cash' && cashReceivedNum < payingTotal)}>
+                {paying ? t('common.loading') : t('cashier.submitCheckout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Option selection modal */}
       {optionModal && optionModal.optionGroups && optionModal.optionGroups.length > 0 && (

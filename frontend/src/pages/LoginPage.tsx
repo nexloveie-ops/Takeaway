@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('/logo.jpg');
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -18,6 +19,13 @@ export default function LoginPage() {
       navigate(target, { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
+
+  // Load logo from config
+  useEffect(() => {
+    fetch('/api/admin/config').then(r => r.ok ? r.json() : {}).then((c: Record<string, string>) => {
+      if (c.restaurant_logo) setLogoUrl(c.restaurant_logo);
+    }).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -43,7 +51,7 @@ export default function LoginPage() {
         boxShadow: '0 8px 32px rgba(0,0,0,0.2)', textAlign: 'center',
       }}>
         <div style={{ marginBottom: 8 }}>
-          <span style={{ fontSize: 48 }}>🍗</span>
+          <img src={logoUrl} alt="Logo" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover' }} />
         </div>
         <h1 style={{
           fontFamily: "'Noto Serif SC', serif", fontSize: 28, fontWeight: 700,

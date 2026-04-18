@@ -363,14 +363,14 @@ export default function MenuItemManager() {
                   })}
                 </td>
                 <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                  {item.arFileUrl ? (
-                    <span style={{ color: 'var(--green)', fontSize: 16 }}>✓ AR</span>
-                  ) : (
-                    <label style={{ cursor: 'pointer' }}>
+                  <label style={{ cursor: 'pointer' }}>
+                    {item.arFileUrl ? (
+                      <span style={{ color: 'var(--green)', fontSize: 13 }}>✓ <span style={{ textDecoration: 'underline', fontSize: 11 }}>替换</span></span>
+                    ) : (
                       <span className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 8px', display: 'inline-block' }}>上传 AR</span>
-                      <input type="file" accept=".usdz" hidden onChange={e => { if (e.target.files?.[0]) { uploadAR(item._id, e.target.files[0]); e.target.value = ''; } }} />
-                    </label>
-                  )}
+                    )}
+                    <input type="file" accept=".usdz" hidden onChange={e => { if (e.target.files?.[0]) { uploadAR(item._id, e.target.files[0]); e.target.value = ''; } }} />
+                  </label>
                 </td>
                 <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                   {item.isSoldOut
