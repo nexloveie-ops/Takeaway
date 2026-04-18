@@ -1,24 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../context/AuthContext';
 import QRCode from 'qrcode';
 
 interface QRItem { label: string; url: string; dataUrl: string; }
 
 export default function QRCodeManager() {
   const { t } = useTranslation();
+  const { token } = useAuth();
   const [tables, setTables] = useState(5);
   const [seatsPerTable, setSeatsPerTable] = useState(4);
   const [qrItems, setQrItems] = useState<QRItem[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+  // Load saved config on mount
+  useEffect(() => {
+    fetch('/api/admin/config').then(r => r.ok ? r.json() : {}).then((cfg: Record<string, string>) => {
+      if (cfg.qr_tables) setTables(parseInt(cfg.qr_tables, 10) || 5);
+      if (cfg.qr_seats_per_table) setSeatsPerTable(parseInt(cfg.qr_seats_per_table, 10) || 4);
+      setConfigLoaded(true);
+    }).catch(() => setConfigLoaded(true));
+  }, []);
 
   const generate = useCallback(async () => {
     setGenerating(true);
     const items: QRItem[] = [];
 
-    // Dine-in QR codes
     for (let table = 1; table <= tables; table++) {
       for (let seat = 1; seat <= seatsPerTable; seat++) {
         const url = `${baseUrl}/customer?table=${table}&seat=${seat}`;
@@ -27,16 +38,23 @@ export default function QRCodeManager() {
       }
     }
 
-    // Takeout QR code
     const takeoutUrl = `${baseUrl}/customer?type=takeout`;
     const takeoutDataUrl = await QRCode.toDataURL(takeoutUrl, { width: 200, margin: 1 });
     items.push({ label: 'Take Away', url: takeoutUrl, dataUrl: takeoutDataUrl });
 
     setQrItems(items);
     setGenerating(false);
-  }, [tables, seatsPerTable, baseUrl, t]);
 
-  useEffect(() => { generate(); }, []);
+    // Save config to backend
+    fetch('/api/admin/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ qr_tables: String(tables), qr_seats_per_table: String(seatsPerTable) }),
+    }).catch(() => {});
+  }, [tables, seatsPerTable, baseUrl, token]);
+
+  // Auto-generate after config loaded
+  useEffect(() => { if (configLoaded) generate(); }, [configLoaded]);
 
   const printAll = () => {
     const w = window.open('', '_blank');
