@@ -101,13 +101,23 @@ export default function MenuItemManager() {
         })),
       })),
     };
-    if (editingId) {
-      await fetch(`/api/menu/items/${editingId}`, { method: 'PUT', headers, body: JSON.stringify(body) });
-    } else {
-      await fetch('/api/menu/items', { method: 'POST', headers, body: JSON.stringify(body) });
+    try {
+      let res: Response;
+      if (editingId) {
+        res = await fetch(`/api/menu/items/${editingId}`, { method: 'PUT', headers, body: JSON.stringify(body) });
+      } else {
+        res = await fetch('/api/menu/items', { method: 'POST', headers, body: JSON.stringify(body) });
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        alert(data?.error?.message || '保存失败');
+        return;
+      }
+      setShowForm(false);
+      fetchData();
+    } catch {
+      alert('保存失败，请检查网络连接');
     }
-    setShowForm(false);
-    fetchData();
   };
 
   const handleDelete = async (id: string) => {
