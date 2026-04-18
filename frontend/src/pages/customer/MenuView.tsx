@@ -1,8 +1,9 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCart } from '../../context/CartContext';
 import MenuItemCard from '../../components/customer/MenuItemCard';
+import { matchBundles, calcBundleTotal, type OfferData } from '../../utils/bundleMatcher';
 
 interface Category { _id: string; sortOrder: number; translations: { locale: string; name: string }[]; }
 interface AllergenData { _id: string; icon: string; }
@@ -22,7 +23,7 @@ export default function MenuView() {
   const { i18n, t } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { addItem, totalAmount, totalItems } = useCart();
+  const { addItem, totalAmount, totalItems, items: cartItems, getItemKey } = useCart();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItemData[]>([]);
   const [allergens, setAllergens] = useState<AllergenData[]>([]);
@@ -30,8 +31,7 @@ export default function MenuView() {
   const lang = i18n.language;
 
   // Active offers for banner
-  interface ActiveOffer { _id: string; name: string; nameEn: string; description: string; descriptionEn: string; bundlePrice: number; }
-  const [activeOffers, setActiveOffers] = useState<ActiveOffer[]>([]);
+  const [activeOffers, setActiveOffers] = useState<OfferData[]>([]);
 
   // Refs for scroll-based category tracking
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -123,6 +123,28 @@ export default function MenuView() {
     const qs = searchParams.toString();
     navigate(`/customer/cart${qs ? '?' + qs : ''}`);
   };
+
+  // Bundle matching for floating cart price
+  const menuItemCatMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const item of items) map[item._id] = item.categoryId;
+    return map;
+  }, [items]);
+
+  const finalTotal = useMemo(() => {
+    if (activeOffers.length === 0 || cartItems.length === 0) return totalAmount;
+    const cartEntries = cartItems.map(ci => ({
+      key: getItemKey(ci),
+      menuItemId: ci.menuItemId,
+      categoryId: menuItemCatMap[ci.menuItemId] || '',
+      basePrice: ci.price,
+      optionExtra: (ci.options || []).reduce((s, o) => s + o.extraPrice, 0),
+      quantity: ci.quantity,
+    }));
+    const matched = matchBundles(cartEntries, activeOffers);
+    const result = calcBundleTotal(cartEntries, matched);
+    return result.finalTotal;
+  }, [cartItems, activeOffers, menuItemCatMap, totalAmount, getItemKey]);
 
   // Group items by category
   const itemsByCategory = new Map<string, MenuItemData[]>();
@@ -280,8 +302,13 @@ export default function MenuView() {
                 borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>{totalItems}</span>
             </div>
-            <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>
-              <span style={{ fontSize: 13, fontWeight: 500, marginRight: 1 }}>€</span>{totalAmount}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {finalTotal < totalAmount && (
+                <span style={{ fontSize: 12, textDecoration: 'line-through', opacity: 0.6 }}>€{totalAmount.toFixed(2)}</span>
+              )}
+              <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Noto Serif SC', serif" }}>
+                <span style={{ fontSize: 13, fontWeight: 500, marginRight: 1 }}>€</span>{finalTotal.toFixed(2)}
+              </div>
             </div>
           </div>
           <span style={{
