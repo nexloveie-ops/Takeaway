@@ -64,20 +64,21 @@ export default function CashierLayout() {
 
       let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:monospace; font-size:13px; font-weight:bold; color:#000; max-width:300px; margin:0 auto; padding:12px; }
+        body { font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:bold; color:#000; max-width:420px; margin:0 auto; padding:14px; }
         .center { text-align:center; }
-        .divider { border-top:1px dashed #000; margin:8px 0; }
-        .row { display:flex; justify-content:space-between; margin:3px 0; }
-        .big { font-size:16px; margin:6px 0; }
-        .section { margin:4px 0; font-size:12px; color:#333; text-decoration:underline; }
+        .divider { border-top:2px dashed #000; margin:10px 0; }
+        .row { display:flex; justify-content:space-between; margin:4px 0; }
+        .big { font-size:18px; margin:6px 0; }
+        .section { margin:4px 0; font-size:14px; text-decoration:underline; }
+        @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } @page { margin:0; size:80mm auto; } }
       </style></head><body>`;
 
       // Header
       html += `<div class="center">`;
-      if (name) html += `<div style="font-size:16px;margin-bottom:2px">${name}</div>`;
-      if (addr) html += `<div style="font-size:10px">${addr}</div>`;
+      if (name) html += `<div style="font-size:18px;margin-bottom:4px">${name}</div>`;
+      if (addr) html += `<div style="font-size:13px">${addr}</div>`;
       html += `<div class="big">DAILY SETTLEMENT</div>`;
-      html += `<div style="font-size:11px">${dateStr} ${timeStr}</div>`;
+      html += `<div style="font-size:13px">${dateStr} ${timeStr}</div>`;
       html += `</div><div class="divider"></div>`;
 
       // Takeout
@@ -108,13 +109,13 @@ export default function CashierLayout() {
       html += `<div class="divider"></div>`;
 
       // Total
-      html += `<div class="row" style="font-size:14px"><span>Gross Revenue</span><span>€${(stats.grossRevenue ?? 0).toFixed(2)}</span></div>`;
-      html += `<div class="row" style="font-size:11px;color:#666"><span>Less Refunds</span><span>-€${(stats.refundedAmount ?? 0).toFixed(2)}</span></div>`;
-      html += `<div class="row" style="font-size:18px;margin-top:6px"><span>NET TOTAL</span><span>€${(stats.totalRevenue ?? 0).toFixed(2)}</span></div>`;
+      html += `<div class="row" style="font-size:16px"><span>Gross Revenue</span><span>€${(stats.grossRevenue ?? 0).toFixed(2)}</span></div>`;
+      html += `<div class="row"><span>Less Refunds</span><span>-€${(stats.refundedAmount ?? 0).toFixed(2)}</span></div>`;
+      html += `<div class="row" style="font-size:20px;margin-top:6px"><span>NET TOTAL</span><span>€${(stats.totalRevenue ?? 0).toFixed(2)}</span></div>`;
 
       // Footer
       html += `<div class="divider"></div>`;
-      html += `<div class="center" style="font-size:10px;margin-top:4px">Printed by ${user?.username || ''} at ${timeStr}</div>`;
+      html += `<div class="center" style="font-size:12px;margin-top:4px">Printed by ${user?.username || ''} at ${timeStr}</div>`;
       html += `</body></html>`;
 
       printViaIframe(html, 1);

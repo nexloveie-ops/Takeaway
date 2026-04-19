@@ -87,28 +87,32 @@ function buildReceiptHTML(
 
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: monospace; font-size: 14px; font-weight: bold; color: #000; max-width: 300px; margin: 0 auto; padding: 12px; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: bold; color: #000; max-width: 420px; margin: 0 auto; padding: 14px; }
     .center { text-align: center; }
-    .divider { border-top: 1px dashed #000; margin: 8px 0; }
-    .row { display: flex; justify-content: space-between; margin: 3px 0; }
-    .big { font-size: 20px; margin: 6px 0; letter-spacing: 2px; }
+    .divider { border-top: 2px dashed #000; margin: 10px 0; }
+    .row { display: flex; justify-content: space-between; margin: 4px 0; }
+    .big { font-size: 22px; margin: 6px 0; letter-spacing: 2px; }
     table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-    td { padding: 3px 0; vertical-align: top; }
-    .qty { text-align: center; width: 30px; }
+    td { padding: 4px 0; vertical-align: top; }
+    .qty { text-align: center; width: 36px; }
     .amt { text-align: right; }
-    .small { font-size: 10px; }
-    .terms { text-align: center; font-size: 11px; white-space: pre-line; margin-top: 8px; border-top: 1px dashed #000; padding-top: 8px; }
+    .sub { font-size: 13px; padding-left: 4px; }
+    .terms { text-align: center; font-size: 13px; white-space: pre-line; margin-top: 10px; border-top: 2px dashed #000; padding-top: 10px; }
     .terms img { font-weight: normal; }
-    .footer { text-align: center; margin-top: 12px; border-top: 1px dashed #000; padding-top: 8px; font-size: 12px; }
+    .footer { text-align: center; margin-top: 14px; border-top: 2px dashed #000; padding-top: 10px; font-size: 13px; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @page { margin: 0; size: 80mm auto; }
+    }
   </style></head><body>`;
 
   // Header
   html += `<div class="center">`;
-  if (restaurantName) html += `<div style="font-size:16px;margin-bottom:2px">${restaurantName}</div>`;
-  if (config.restaurant_address) html += `<div class="small">${config.restaurant_address}</div>`;
-  if (config.restaurant_phone) html += `<div class="small">Tel: ${config.restaurant_phone}</div>`;
-  if (config.restaurant_website) html += `<div class="small">${config.restaurant_website}</div>`;
-  if (config.restaurant_email) html += `<div class="small">${config.restaurant_email}</div>`;
+  if (restaurantName) html += `<div style="font-size:18px;margin-bottom:4px">${restaurantName}</div>`;
+  if (config.restaurant_address) html += `<div style="font-size:13px">${config.restaurant_address}</div>`;
+  if (config.restaurant_phone) html += `<div style="font-size:13px">Tel: ${config.restaurant_phone}</div>`;
+  if (config.restaurant_website) html += `<div style="font-size:13px">${config.restaurant_website}</div>`;
+  if (config.restaurant_email) html += `<div style="font-size:13px">${config.restaurant_email}</div>`;
 
   if (isDineIn) {
     if (receipt.tableNumber != null && receipt.tableNumber > 0) html += `<div class="big">Table ${receipt.tableNumber}</div>`;
@@ -116,7 +120,7 @@ function buildReceiptHTML(
     if (seats.length > 0) html += `<div class="big">Seat ${seats.join(', ')}</div>`;
     const orderNum = receipt.orders.find(o => o.dineInOrderNumber)?.dineInOrderNumber;
     if (orderNum) html += `<div class="big">Order #${orderNum}</div>`;
-    html += `<div class="small" style="margin-top:4px">Ref: ${String(receipt.checkoutId).slice(-8).toUpperCase()}</div>`;
+    html += `<div style="font-size:12px;margin-top:4px">Ref: ${String(receipt.checkoutId).slice(-8).toUpperCase()}</div>`;
   } else {
     html += `<div class="big">Pickup #${receipt.orders[0]?.dailyOrderNumber || ''}</div>`;
   }
@@ -127,9 +131,9 @@ function buildReceiptHTML(
   for (const order of receipt.orders) {
     for (const item of order.items) {
       html += `<tr><td><div>${item.itemName}</div>`;
-      if (item.itemNameEn && item.itemNameEn !== item.itemName) html += `<div class="small" style="color:#666">${item.itemNameEn}</div>`;
+      if (item.itemNameEn && item.itemNameEn !== item.itemName) html += `<div class="sub">${item.itemNameEn}</div>`;
       if (item.selectedOptions && item.selectedOptions.length > 0) {
-        html += `<div class="small" style="color:#888;padding-left:4px">${item.selectedOptions.map(o => o.choiceName + (o.extraPrice > 0 ? ` +€${o.extraPrice}` : '')).join(', ')}</div>`;
+        html += `<div class="sub">${item.selectedOptions.map(o => o.choiceName + (o.extraPrice > 0 ? ` +€${o.extraPrice}` : '')).join(', ')}</div>`;
       }
       html += `</td><td class="qty">x${item.quantity}</td><td class="amt">€${(item.unitPrice * item.quantity).toFixed(2)}</td></tr>`;
     }
@@ -142,11 +146,11 @@ function buildReceiptHTML(
     const subtotal = receipt.totalAmount + totalBundleDiscount;
     html += `<div class="row"><span>Subtotal</span><span>€${subtotal.toFixed(2)}</span></div>`;
     for (const bd of bundleDiscounts || []) {
-      html += `<div class="row" style="color:#666"><span>🎁 ${bd.nameEn || bd.name}</span><span>-€${bd.discount.toFixed(2)}</span></div>`;
+      html += `<div class="row"><span>🎁 ${bd.nameEn || bd.name}</span><span>-€${bd.discount.toFixed(2)}</span></div>`;
     }
-    html += `<div class="row" style="font-size:16px;margin-top:4px"><span>Total</span><span>€${receipt.totalAmount.toFixed(2)}</span></div>`;
+    html += `<div class="row" style="font-size:18px;margin-top:4px"><span>Total</span><span>€${receipt.totalAmount.toFixed(2)}</span></div>`;
   } else {
-    html += `<div class="row" style="font-size:16px"><span>Total</span><span>€${receipt.totalAmount.toFixed(2)}</span></div>`;
+    html += `<div class="row" style="font-size:18px"><span>Total</span><span>€${receipt.totalAmount.toFixed(2)}</span></div>`;
   }
   html += `<div class="row" style="margin-top:4px"><span>Payment</span><span>${paymentLabel}</span></div>`;
 
@@ -174,7 +178,7 @@ function buildReceiptHTML(
   }
 
   // Footer
-  html += `<div class="footer"><div>${checkedOutAt.toLocaleString('en-GB')}</div><div style="margin-top:4px;font-size:10px">Thank you for dining with us!</div></div>`;
+  html += `<div class="footer"><div>${checkedOutAt.toLocaleString('en-GB')}</div><div style="margin-top:4px;font-size:12px">Thank you for dining with us!</div></div>`;
   html += `</body></html>`;
   return html;
 }
@@ -289,36 +293,36 @@ export default function ReceiptPrint({ checkoutId, cashReceived, changeAmount, b
   const termsSegments = config.receipt_terms ? parseQRCodes(config.receipt_terms) : [];
 
   return (
-    <div style={{ fontFamily: 'monospace', maxWidth: 300, margin: '0 auto', padding: 16, fontSize: 13, fontWeight: 'bold', color: '#000', background: '#fff', border: '1px solid #ddd', borderRadius: 8 }}>
-      <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 8 }}>
-        {restaurantName && <div style={{ fontSize: 15, marginBottom: 2 }}>{restaurantName}</div>}
-        {config.restaurant_address && <div style={{ fontSize: 10 }}>{config.restaurant_address}</div>}
-        {config.restaurant_phone && <div style={{ fontSize: 10 }}>Tel: {config.restaurant_phone}</div>}
+    <div style={{ fontFamily: 'Arial, Helvetica, sans-serif', maxWidth: 420, margin: '0 auto', padding: 16, fontSize: 14, fontWeight: 'bold', color: '#000', background: '#fff', border: '1px solid #ddd', borderRadius: 8 }}>
+      <div style={{ textAlign: 'center', borderBottom: '2px dashed #000', paddingBottom: 8, marginBottom: 8 }}>
+        {restaurantName && <div style={{ fontSize: 17, marginBottom: 4 }}>{restaurantName}</div>}
+        {config.restaurant_address && <div style={{ fontSize: 13 }}>{config.restaurant_address}</div>}
+        {config.restaurant_phone && <div style={{ fontSize: 13 }}>Tel: {config.restaurant_phone}</div>}
         <div style={{ marginTop: 6 }}>
           {isDineIn ? (
             <>
-              {receipt.tableNumber != null && receipt.tableNumber > 0 && <div style={{ fontSize: 18 }}>Table {receipt.tableNumber}</div>}
-              {(() => { const s = [...new Set(receipt.orders.map(o => o.seatNumber).filter(v => v != null && v > 0))].sort(); return s.length > 0 ? <div style={{ fontSize: 18 }}>Seat {s.join(', ')}</div> : null; })()}
-              {(() => { const n = receipt.orders.find(o => o.dineInOrderNumber)?.dineInOrderNumber; return n ? <div style={{ fontSize: 18 }}>Order #{n}</div> : null; })()}
+              {receipt.tableNumber != null && receipt.tableNumber > 0 && <div style={{ fontSize: 20 }}>Table {receipt.tableNumber}</div>}
+              {(() => { const s = [...new Set(receipt.orders.map(o => o.seatNumber).filter(v => v != null && v > 0))].sort(); return s.length > 0 ? <div style={{ fontSize: 20 }}>Seat {s.join(', ')}</div> : null; })()}
+              {(() => { const n = receipt.orders.find(o => o.dineInOrderNumber)?.dineInOrderNumber; return n ? <div style={{ fontSize: 20 }}>Order #{n}</div> : null; })()}
             </>
           ) : (
-            <div style={{ fontSize: 18 }}>Pickup #{receipt.orders[0]?.dailyOrderNumber}</div>
+            <div style={{ fontSize: 20 }}>Pickup #{receipt.orders[0]?.dailyOrderNumber}</div>
           )}
         </div>
       </div>
 
       {receipt.orders.flatMap(order => order.items.map(item => (
-        <div key={item._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #eee' }}>
+        <div key={item._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid #ddd' }}>
           <div style={{ flex: 1 }}>
             <div>{item.itemName}</div>
-            {item.itemNameEn && item.itemNameEn !== item.itemName && <div style={{ fontSize: 10, color: '#666' }}>{item.itemNameEn}</div>}
-            {item.selectedOptions && item.selectedOptions.length > 0 && <div style={{ fontSize: 9, color: '#888' }}>{item.selectedOptions.map(o => o.choiceName).join(', ')}</div>}
+            {item.itemNameEn && item.itemNameEn !== item.itemName && <div style={{ fontSize: 12 }}>{item.itemNameEn}</div>}
+            {item.selectedOptions && item.selectedOptions.length > 0 && <div style={{ fontSize: 12 }}>{item.selectedOptions.map(o => o.choiceName).join(', ')}</div>}
           </div>
           <div style={{ whiteSpace: 'nowrap' }}>x{item.quantity} €{(item.unitPrice * item.quantity).toFixed(2)}</div>
         </div>
       )))}
 
-      <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+      <div style={{ borderTop: '2px dashed #000', margin: '8px 0' }} />
       {(() => {
         const totalBD = (bundleDiscounts || []).reduce((s, b) => s + b.discount, 0);
         if (totalBD > 0) {
@@ -327,35 +331,35 @@ export default function ReceiptPrint({ checkoutId, cashReceived, changeAmount, b
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>€{subtotal.toFixed(2)}</span></div>
               {(bundleDiscounts || []).map((bd, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 12 }}><span>🎁 {bd.nameEn || bd.name}</span><span>-€{bd.discount.toFixed(2)}</span></div>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>🎁 {bd.nameEn || bd.name}</span><span>-€{bd.discount.toFixed(2)}</span></div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, marginTop: 4 }}><span>Total</span><span>€{receipt.totalAmount.toFixed(2)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, marginTop: 4 }}><span>Total</span><span>€{receipt.totalAmount.toFixed(2)}</span></div>
             </>
           );
         }
-        return <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15 }}><span>Total</span><span>€{receipt.totalAmount.toFixed(2)}</span></div>;
+        return <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17 }}><span>Total</span><span>€{receipt.totalAmount.toFixed(2)}</span></div>;
       })()}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}><span>Payment</span><span>{paymentLabel}</span></div>
 
       {receipt.paymentMethod === 'cash' && cashReceived != null && cashReceived > 0 && (
         <>
-          <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+          <div style={{ borderTop: '2px dashed #000', margin: '8px 0' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Cash Received</span><span>€{cashReceived.toFixed(2)}</span></div>
           {changeAmount != null && changeAmount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Change</span><span>€{changeAmount.toFixed(2)}</span></div>}
         </>
       )}
 
       {termsSegments.length > 0 && (
-        <div style={{ textAlign: 'center', borderTop: '1px dashed #000', marginTop: 8, paddingTop: 8, fontSize: 10, whiteSpace: 'pre-line' }}>
+        <div style={{ textAlign: 'center', borderTop: '2px dashed #000', marginTop: 8, paddingTop: 8, fontSize: 12, whiteSpace: 'pre-line' }}>
           {termsSegments.map((seg, i) => seg.type === 'text' ? <span key={i}>{seg.value}</span> : (
-            <div key={i} style={{ margin: '6px auto' }}><img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(seg.value)}`} alt="QR" width={80} height={80} /></div>
+            <div key={i} style={{ margin: '6px auto' }}><img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(seg.value)}`} alt="QR" width={100} height={100} /></div>
           ))}
         </div>
       )}
 
-      <div style={{ textAlign: 'center', borderTop: '1px dashed #000', marginTop: 8, paddingTop: 8, fontSize: 11 }}>
+      <div style={{ textAlign: 'center', borderTop: '2px dashed #000', marginTop: 8, paddingTop: 8, fontSize: 13 }}>
         {checkedOutAt.toLocaleString('en-GB')}
-        <div style={{ fontSize: 9, marginTop: 2 }}>Thank you for dining with us!</div>
+        <div style={{ fontSize: 12, marginTop: 2 }}>Thank you for dining with us!</div>
       </div>
     </div>
   );
