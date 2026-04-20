@@ -29,10 +29,14 @@ export default function DineInOrderBoard() {
       const groups: TableGroup[] = [...grouped.entries()].map(([tableNumber, orders]) => ({
         tableNumber,
         orders,
-        total: orders.reduce((s, o) => s + o.items.reduce((s2, i) => {
-          const optExtra = (i.selectedOptions || []).reduce((a: number, opt: { extraPrice?: number }) => a + (opt.extraPrice || 0), 0);
-          return s2 + (i.unitPrice + optExtra) * i.quantity;
-        }, 0), 0),
+        total: orders.reduce((s, o) => {
+          const itemsSum = o.items.reduce((s2, i) => {
+            const optExtra = (i.selectedOptions || []).reduce((a: number, opt: { extraPrice?: number }) => a + (opt.extraPrice || 0), 0);
+            return s2 + (i.unitPrice + optExtra) * i.quantity;
+          }, 0);
+          const bundleDisc = ((o as Record<string, unknown>).appliedBundles as { discount: number }[] || []).reduce((a: number, b: { discount: number }) => a + b.discount, 0);
+          return s + itemsSum - bundleDisc;
+        }, 0),
       })).sort((a, b) => a.tableNumber - b.tableNumber);
       setTables(groups);
     } catch { /* ignore */ }

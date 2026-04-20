@@ -30,13 +30,18 @@ export function createCheckoutRouter(io: SocketIOServer): Router {
         throw createAppError('NOT_FOUND', 'No pending orders found for this table');
       }
 
-      // Calculate total amount
-      const totalAmount = orders.reduce((sum, order) => {
+      // Calculate total amount including bundle discounts
+      const itemsTotal = orders.reduce((sum, order) => {
         return sum + order.items.reduce((itemSum, item) => {
           const optExtra = (item.selectedOptions || []).reduce((s: number, o: { extraPrice?: number }) => s + (o.extraPrice || 0), 0);
           return itemSum + (item.unitPrice + optExtra) * item.quantity;
         }, 0);
       }, 0);
+      const tableBundleDiscount = orders.reduce((sum, order) => {
+        return sum + ((order as unknown as { appliedBundles?: { discount: number }[] }).appliedBundles || [])
+          .reduce((s: number, b: { discount: number }) => s + b.discount, 0);
+      }, 0);
+      const totalAmount = itemsTotal - tableBundleDiscount;
 
       // Validate mixed payment
       if (paymentMethod === 'mixed') {
@@ -110,14 +115,17 @@ export function createCheckoutRouter(io: SocketIOServer): Router {
         });
       }
 
-      // Calculate total amount from items, allow override for bundle discounts
+      // Calculate total amount from items, apply bundle discounts, allow override
       const itemTotal = order.items.reduce((sum, item) => {
         const optExtra = (item.selectedOptions || []).reduce((s: number, o: { extraPrice?: number }) => s + (o.extraPrice || 0), 0);
         return sum + (item.unitPrice + optExtra) * item.quantity;
       }, 0);
+      const bundleDiscount = ((order as unknown as { appliedBundles?: { discount: number }[] }).appliedBundles || [])
+        .reduce((s: number, b: { discount: number }) => s + b.discount, 0);
+      const autoTotal = itemTotal - bundleDiscount;
       const totalAmount = (totalAmountOverride != null && typeof totalAmountOverride === 'number' && totalAmountOverride >= 0)
         ? totalAmountOverride
-        : itemTotal;
+        : autoTotal;
 
       // Validate mixed payment
       if (paymentMethod === 'mixed') {

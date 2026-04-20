@@ -12,7 +12,7 @@ export function createOrdersRouter(io: SocketIOServer): Router {
   // POST /api/orders — Create a new order
   router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { type, tableNumber, seatNumber, items } = req.body;
+      const { type, tableNumber, seatNumber, items, appliedBundles } = req.body;
 
       // Validate type
       if (!type || !['dine_in', 'takeout'].includes(type)) {
@@ -104,6 +104,7 @@ export function createOrdersRouter(io: SocketIOServer): Router {
         type,
         status: 'pending',
         items: orderItems,
+        appliedBundles: Array.isArray(appliedBundles) ? appliedBundles : [],
       };
 
       if (type === 'dine_in') {

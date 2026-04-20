@@ -5,9 +5,11 @@ import { useCart } from '../../context/CartContext';
 import type { CartItem } from '../../context/CartContext';
 
 interface OrderItem { _id: string; menuItemId: string; quantity: number; unitPrice: number; itemName: string; selectedOptions?: { groupName: string; choiceName: string; extraPrice: number }[]; }
+interface AppliedBundle { offerId?: string; name: string; nameEn?: string; discount: number; }
 interface Order {
   _id: string; type: string; tableNumber?: number; seatNumber?: number;
   dailyOrderNumber?: number; status: string; items: OrderItem[];
+  appliedBundles?: AppliedBundle[];
 }
 
 export default function OrderStatusPage() {
@@ -77,9 +79,11 @@ export default function OrderStatusPage() {
           background: statusColor + '20', color: statusColor, fontWeight: 600, fontSize: 13,
         }}>{statusLabel}</span>
         {isPending && (
-          <p style={{ marginTop: 12, fontSize: 13, color: 'var(--text-secondary)' }}>
-            {t('customer.goToCheckout')}
-          </p>
+          <div style={{ marginTop: 14, padding: '12px 16px', background: '#FFF3E0', border: '2px solid #FF9800', borderRadius: 10, textAlign: 'center' }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: '#E65100', whiteSpace: 'pre-line', lineHeight: 1.6 }}>
+              {t('customer.goToCheckout')}
+            </p>
+          </div>
         )}
       </div>
 
@@ -111,6 +115,24 @@ export default function OrderStatusPage() {
           <span>{t('customer.totalAmount')}</span>
           <span style={{ color: 'var(--red-primary)', fontFamily: "'Noto Serif SC', serif" }}>€{total(order.items).toFixed(2)}</span>
         </div>
+        {order.appliedBundles && order.appliedBundles.length > 0 && (() => {
+          const bundleDiscount = order.appliedBundles.reduce((s, b) => s + b.discount, 0);
+          const netTotal = total(order.items) - bundleDiscount;
+          return (
+            <div style={{ padding: '0 16px 14px' }}>
+              {order.appliedBundles.map((b, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#2E7D32', padding: '2px 0' }}>
+                  <span>🎁 {b.name}{b.nameEn ? ` ${b.nameEn}` : ''}</span>
+                  <span style={{ fontWeight: 600 }}>-€{b.discount.toFixed(2)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 18, marginTop: 6, paddingTop: 6, borderTop: '1px solid #eee' }}>
+                <span>{t('customer.totalAmount')}</span>
+                <span style={{ color: 'var(--red-primary)', fontFamily: "'Noto Serif SC', serif" }}>€{netTotal.toFixed(2)}</span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Actions */}

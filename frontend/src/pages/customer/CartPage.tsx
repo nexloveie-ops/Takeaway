@@ -96,6 +96,15 @@ export default function CartPage() {
           body.tableNumber = Number(table);
           body.seatNumber = Number(seat);
         }
+        // Include bundle discount info
+        if (matchedBundles.length > 0) {
+          body.appliedBundles = matchedBundles.map(b => ({
+            offerId: b.offer._id,
+            name: b.offer.name,
+            nameEn: b.offer.nameEn,
+            discount: b.savings,
+          }));
+        }
         res = await fetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

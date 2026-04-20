@@ -36,7 +36,7 @@
     "addToCart": "Add to Cart",
     "calories": "cal",
     "waitTime": "min",
-    "goToCheckout": "Please proceed to the counter to pay",
+    "goToCheckout": "Please proceed to the counter to pay\nDue to high online payment processing fees, please pay by card or cash at the counter",
     "emptyCart": "Your cart is empty",
     "backToMenu": "Back to Menu",
     "totalAmount": "Total",
