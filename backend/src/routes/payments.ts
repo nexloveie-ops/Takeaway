@@ -3,12 +3,18 @@ import mongoose from 'mongoose';
 import Stripe from 'stripe';
 import { Order } from '../models/Order';
 import { Checkout } from '../models/Checkout';
+import { SystemConfig } from '../models/SystemConfig';
 import { createAppError } from '../middleware/errorHandler';
 
 const router = Router();
 
-function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY || '');
+async function getStripe() {
+  const config = await SystemConfig.findOne({ key: 'stripe_secret_key' }).lean();
+  const secretKey = config?.value || process.env.STRIPE_SECRET_KEY || '';
+  if (!secretKey) {
+    throw createAppError('VALIDATION_ERROR', 'Stripe secret key is not configured');
+  }
+  return new Stripe(secretKey);
 }
 
 /**
@@ -36,7 +42,7 @@ router.post('/create-intent', async (req: Request, res: Response, next: NextFunc
 
     if (totalAmount <= 0) throw createAppError('VALIDATION_ERROR', 'Order total must be greater than 0');
 
-    const stripe = getStripe();
+    const stripe = await getStripe();
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalAmount,
       currency: 'eur',
@@ -69,7 +75,7 @@ router.post('/confirm', async (req: Request, res: Response, next: NextFunction) 
       return;
     }
 
-    const stripe = getStripe();
+    const stripe = await getStripe();
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (paymentIntent.status !== 'succeeded') {
       throw createAppError('VALIDATION_ERROR', 'Payment not completed');
@@ -90,8 +96,14 @@ router.post('/confirm', async (req: Request, res: Response, next: NextFunction) 
 /**
  * GET /api/payments/config
  */
-router.get('/config', (_req: Request, res: Response) => {
-  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '' });
+router.get('/config', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const config = await SystemConfig.findOne({ key: 'stripe_publishable_key' }).lean();
+    const publishableKey = config?.value || process.env.STRIPE_PUBLISHABLE_KEY || '';
+    res.json({ publishableKey });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**

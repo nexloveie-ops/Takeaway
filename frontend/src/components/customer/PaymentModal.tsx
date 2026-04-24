@@ -16,7 +16,14 @@ function getStripePromise() {
   if (!stripePromise) {
     stripePromise = fetch('/api/payments/config')
       .then(r => r.json())
-      .then(data => loadStripe(data.publishableKey));
+      .then(data => {
+        if (!data.publishableKey) {
+          console.error('Stripe publishable key is not configured');
+          return null;
+        }
+        return loadStripe(data.publishableKey);
+      })
+      .catch(() => null);
   }
   return stripePromise;
 }
@@ -194,11 +201,18 @@ export default function PaymentModal({ orderId, amount, onSuccess, onClose }: Pa
   const { t } = useTranslation();
   const [stripeLoaded, setStripeLoaded] = useState(false);
   const [stripeInstance, setStripeInstance] = useState<Promise<Stripe | null> | null>(null);
+  const [stripeUnavailable, setStripeUnavailable] = useState(false);
 
   useEffect(() => {
     const p = getStripePromise();
     setStripeInstance(p);
-    p.then(() => setStripeLoaded(true));
+    p.then((instance) => {
+      if (instance) {
+        setStripeLoaded(true);
+      } else {
+        setStripeUnavailable(true);
+      }
+    });
   }, []);
 
   return (
@@ -214,7 +228,16 @@ export default function PaymentModal({ orderId, amount, onSuccess, onClose }: Pa
           <div style={{ fontSize: 16, fontWeight: 700 }}>💳 {t('customer.payment')}</div>
         </div>
 
-        {stripeLoaded && stripeInstance ? (
+        {stripeUnavailable ? (
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <div style={{ color: '#F44336', fontSize: 14, marginBottom: 16 }}>
+              在线支付暂不可用，请到吧台付款
+            </div>
+            <button onClick={onClose} className="btn btn-primary" style={{ padding: '10px 24px' }}>
+              {t('customer.payAtCounter')}
+            </button>
+          </div>
+        ) : stripeLoaded && stripeInstance ? (
           <Elements stripe={stripeInstance}>
             <PaymentContent orderId={orderId} amount={amount} onSuccess={onSuccess} onClose={onClose} />
           </Elements>
