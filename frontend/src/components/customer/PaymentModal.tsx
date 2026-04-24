@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { Elements, PaymentRequestButtonElement, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { useRestaurant } from '../../context/RestaurantContext';
 
 interface PaymentModalProps {
   orderId: string;
@@ -31,6 +32,7 @@ function getStripePromise() {
 function PaymentContent({ orderId, amount, onSuccess, onClose }: PaymentModalProps) {
   const { t } = useTranslation();
   const stripe = useStripe();
+  const restaurant = useRestaurant();
   const elements = useElements();
   const [clientSecret, setClientSecret] = useState('');
   const [paymentRequest, setPaymentRequest] = useState<ReturnType<Stripe['paymentRequest']> | null>(null);
@@ -61,7 +63,7 @@ function PaymentContent({ orderId, amount, onSuccess, onClose }: PaymentModalPro
     const pr = stripe.paymentRequest({
       country: 'IE',
       currency: 'eur',
-      total: { label: 'Taste of Hong Kong', amount: Math.round(amount * 100) },
+      total: { label: restaurant.nameEn || restaurant.nameZh || 'Order', amount: Math.round(amount * 100) },
       requestPayerName: false,
       requestPayerEmail: false,
     });

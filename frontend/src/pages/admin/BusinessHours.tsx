@@ -156,19 +156,29 @@ export default function BusinessHours() {
               {schedule[day]?.enabled ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
-                    type="time"
+                    type="text"
                     className="input"
                     value={schedule[day]?.open || '11:00'}
-                    onChange={e => updateDay(day, 'open', e.target.value)}
-                    style={{ width: 120 }}
+                    onChange={e => {
+                      const v = e.target.value.replace(/[^\d:]/g, '');
+                      updateDay(day, 'open', v);
+                    }}
+                    placeholder="HH:mm"
+                    maxLength={5}
+                    style={{ width: 80, textAlign: 'center', fontFamily: 'monospace', fontSize: 14 }}
                   />
                   <span style={{ color: 'var(--text-light)' }}>—</span>
                   <input
-                    type="time"
+                    type="text"
                     className="input"
                     value={schedule[day]?.close || '22:00'}
-                    onChange={e => updateDay(day, 'close', e.target.value)}
-                    style={{ width: 120 }}
+                    onChange={e => {
+                      const v = e.target.value.replace(/[^\d:]/g, '');
+                      updateDay(day, 'close', v);
+                    }}
+                    placeholder="HH:mm"
+                    maxLength={5}
+                    style={{ width: 80, textAlign: 'center', fontFamily: 'monospace', fontSize: 14 }}
                   />
                 </div>
               ) : (

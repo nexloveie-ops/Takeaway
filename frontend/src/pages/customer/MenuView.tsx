@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCart } from '../../context/CartContext';
+import { useRestaurant } from '../../context/RestaurantContext';
 import MenuItemCard from '../../components/customer/MenuItemCard';
 import OfferSelectModal from '../../components/customer/OfferSelectModal';
 import type { OfferData } from '../../utils/bundleMatcher';
@@ -22,6 +23,7 @@ interface MenuItemData {
 export default function MenuView() {
   const { i18n } = useTranslation();
   const { addItem, items: cartItems, decreaseQuantity, getItemKey } = useCart();
+  const restaurant = useRestaurant();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItemData[]>([]);
   const [allergens, setAllergens] = useState<AllergenData[]>([]);
@@ -148,8 +150,8 @@ export default function MenuView() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div style={{ position: 'relative', zIndex: 1, color: '#fff' }}>
-            <h1 style={{ fontFamily: "'Noto Serif SC', serif", fontSize: 24, fontWeight: 700, letterSpacing: 3, marginBottom: 2 }}>港知味</h1>
-            <div style={{ fontSize: 11, fontWeight: 300, letterSpacing: 5, color: '#F0D68A' }}>TASTE OF HONG KONG</div>
+            <h1 style={{ fontFamily: "'Noto Serif SC', serif", fontSize: 24, fontWeight: 700, letterSpacing: 3, marginBottom: 2 }}>{restaurant.nameZh || restaurant.nameEn}</h1>
+            <div style={{ fontSize: 11, fontWeight: 300, letterSpacing: 5, color: '#F0D68A' }}>{restaurant.nameEn || restaurant.nameZh}</div>
           </div>
           <div style={{ position: 'absolute', top: 8, right: 12, zIndex: 1, textAlign: 'right', color: 'rgba(255,255,255,0.7)', fontSize: 9, lineHeight: 1.5 }}>
             <div>Powered By <span style={{ fontWeight: 600, color: '#F0D68A' }}>L&amp;Z TECHSERVE LTD</span></div>

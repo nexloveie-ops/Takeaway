@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+import { RestaurantProvider } from './context/RestaurantContext';
 import LoginPage from './pages/LoginPage';
 import CustomerLayout from './layouts/CustomerLayout';
 import CashierLayout from './layouts/CashierLayout';
@@ -40,6 +41,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <RestaurantProvider>
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -87,6 +89,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
+      </RestaurantProvider>
     </BrowserRouter>
   );
 }

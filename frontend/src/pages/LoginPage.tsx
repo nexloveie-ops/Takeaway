@@ -1,10 +1,12 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useRestaurant } from '../context/RestaurantContext';
 import { useTranslation } from 'react-i18next';
 
 export default function LoginPage() {
   const { login, user, isAuthenticated } = useAuth();
+  const restaurant = useRestaurant();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [username, setUsername] = useState('');
@@ -56,10 +58,10 @@ export default function LoginPage() {
         <h1 style={{
           fontFamily: "'Noto Serif SC', serif", fontSize: 28, fontWeight: 700,
           color: '#D32F2F', letterSpacing: 3, marginBottom: 4,
-        }}>港知味</h1>
+        }}>{ restaurant.nameZh || restaurant.nameEn || '...' }</h1>
         <div style={{
           fontSize: 11, letterSpacing: 4, color: '#999', marginBottom: 24, textTransform: 'uppercase',
-        }}>TASTE OF HONG KONG</div>
+        }}>{restaurant.nameEn || restaurant.nameZh}</div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <input

@@ -2,11 +2,13 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { parseQRParams } from '../../utils/qrCode';
+import { useRestaurant } from '../../context/RestaurantContext';
 
 export default function ScanLanding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t } = useTranslation();
+  const restaurant = useRestaurant();
   const params = parseQRParams(searchParams);
 
   useEffect(() => {
@@ -28,10 +30,10 @@ export default function ScanLanding() {
         }}>
           <div style={{ position: 'relative', zIndex: 1 }}>
             <h1 style={{ fontFamily: "'Noto Serif SC', serif", fontSize: 26, fontWeight: 700, letterSpacing: 3, marginBottom: 4 }}>
-              港知味
+              {restaurant.nameZh || restaurant.nameEn}
             </h1>
             <div style={{ fontSize: 12, fontWeight: 300, letterSpacing: 6, color: '#F0D68A', textTransform: 'uppercase' }}>
-              TASTE OF HONG KONG
+              {restaurant.nameEn || restaurant.nameZh}
             </div>
             <div style={{
               display: 'inline-block', marginTop: 10, padding: '4px 14px',

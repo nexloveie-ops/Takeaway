@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useRestaurant } from '../context/RestaurantContext';
 import { useTranslation } from 'react-i18next';
 
 const sidebarItems = [
@@ -21,8 +22,10 @@ const sidebarItems = [
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
+  const restaurant = useRestaurant();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const shopName = i18n.language?.startsWith('zh') ? (restaurant.nameZh || restaurant.nameEn) : (restaurant.nameEn || restaurant.nameZh);
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
@@ -39,7 +42,7 @@ export default function AdminLayout() {
           fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 18,
           color: 'var(--red-primary)', letterSpacing: 2,
         }}>
-          港知味
+          {shopName || '...'}
           <div style={{ fontSize: 10, color: 'var(--text-light)', letterSpacing: 3, fontFamily: 'var(--font-body)', fontWeight: 400 }}>
             {t('admin.title')}
           </div>

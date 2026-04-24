@@ -2,6 +2,7 @@ import { Outlet, useSearchParams, useNavigate, useLocation } from 'react-router-
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCart } from '../context/CartContext';
+import { useRestaurant } from '../context/RestaurantContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { matchBundles, calcBundleTotal, type OfferData } from '../utils/bundleMatcher';
 
@@ -9,8 +10,11 @@ export default function CustomerLayout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { totalItems, totalAmount, items: cartItems, getItemKey } = useCart();
+  const restaurant = useRestaurant();
+  const isZh = i18n.language?.startsWith('zh');
+  const shopName = isZh ? (restaurant.nameZh || restaurant.nameEn) : (restaurant.nameEn || restaurant.nameZh);
   const table = searchParams.get('table');
   const seat = searchParams.get('seat');
   const qs = searchParams.toString();
@@ -96,10 +100,10 @@ export default function CustomerLayout() {
         }}>
           <div style={{ position: 'relative', zIndex: 1 }}>
             <h1 style={{ fontFamily: "'Noto Serif SC', serif", fontSize: 26, fontWeight: 700, letterSpacing: 3, marginBottom: 4 }}>
-              港知味
+              {restaurant.nameZh || restaurant.nameEn}
             </h1>
             <div style={{ fontSize: 12, fontWeight: 300, letterSpacing: 6, color: '#F0D68A', textTransform: 'uppercase' }}>
-              TASTE OF HONG KONG
+              {restaurant.nameEn || restaurant.nameZh}
             </div>
           </div>
         </div>
@@ -143,7 +147,7 @@ export default function CustomerLayout() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 16, color: 'var(--red-primary)' }}>
-            港知味
+            {shopName}
           </span>
           {table && seat && (
             <span style={{ fontSize: 12, color: 'var(--text-light)' }}>
