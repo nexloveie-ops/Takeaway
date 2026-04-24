@@ -58,11 +58,6 @@ export default function SystemConfig() {
     return existing || { key, value: '' };
   });
 
-  const maskValue = (value: string) => {
-    if (!value || value.length <= 8) return value;
-    return value.substring(0, 4) + '••••••••' + value.substring(value.length - 4);
-  };
-
   return (
     <div>
       <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>{t('admin.systemConfig')}</h2>
