@@ -82,13 +82,6 @@ export default function OrderStatusPage() {
           display: 'inline-block', padding: '4px 14px', borderRadius: 20,
           background: statusColor + '20', color: statusColor, fontWeight: 600, fontSize: 13,
         }}>{statusLabel}</span>
-        {isPending && (
-          <div style={{ marginTop: 14, padding: '12px 16px', background: '#FFF3E0', border: '2px solid #FF9800', borderRadius: 10, textAlign: 'center' }}>
-            <p style={{ fontSize: 15, fontWeight: 700, color: '#E65100', whiteSpace: 'pre-line', lineHeight: 1.6 }}>
-              {t('customer.goToCheckout')}
-            </p>
-          </div>
-        )}
         {isPaidOnline && (
           <div style={{ marginTop: 14, padding: '12px 16px', background: '#E8F5E9', border: '2px solid #4CAF50', borderRadius: 10, textAlign: 'center' }}>
             <p style={{ fontSize: 15, fontWeight: 700, color: '#2E7D32', lineHeight: 1.6 }}>

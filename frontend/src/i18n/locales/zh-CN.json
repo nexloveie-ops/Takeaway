@@ -36,7 +36,7 @@
     "addToCart": "加入购物车",
     "calories": "卡",
     "waitTime": "分钟",
-    "goToCheckout": "请前往前台结账\n由于网络支付手续费太贵，所以请前往吧台刷卡或支付现金",
+    "goToCheckout": "请前往前台结账",
     "emptyCart": "购物车是空的",
     "backToMenu": "返回菜单",
     "payment": "支付",
