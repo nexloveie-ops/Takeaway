@@ -66,7 +66,12 @@
     "expand": "More",
     "collapse": "Less",
     "selectOptions": "Select Options",
-    "confirmAdd": "Confirm Add"
+    "confirmAdd": "Confirm Add",
+    "shopClosed": "We're Closed",
+    "closedToday": "We are closed today for a special holiday.",
+    "dayOff": "We are closed today. Please come back on our next business day.",
+    "outsideHours": "We are currently outside of business hours. Please come back during opening hours.",
+    "todayHours": "Today's Hours"
   },
   "cashier": {
     "title": "Cashier",
@@ -116,6 +121,7 @@
     "reports": "Reports",
     "users": "Users",
     "systemConfig": "System Config",
+    "businessHours": "Business Hours",
     "restaurantInfo": "Restaurant Info",
     "restaurantNameZh": "Name (Chinese)",
     "restaurantNameEn": "Name (English)",

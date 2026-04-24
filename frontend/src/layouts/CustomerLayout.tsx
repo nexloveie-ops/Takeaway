@@ -1,5 +1,6 @@
 import { Outlet, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCart } from '../context/CartContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { matchBundles, calcBundleTotal, type OfferData } from '../utils/bundleMatcher';
@@ -8,6 +9,7 @@ export default function CustomerLayout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const { totalItems, totalAmount, items: cartItems, getItemKey } = useCart();
   const table = searchParams.get('table');
   const seat = searchParams.get('seat');
@@ -17,6 +19,23 @@ export default function CustomerLayout() {
 
   const [offers, setOffers] = useState<OfferData[]>([]);
   const [menuItemCats, setMenuItemCats] = useState<Record<string, string>>({});
+  const [businessStatus, setBusinessStatus] = useState<{
+    isOpen: boolean;
+    reason: string;
+    todayOpen?: string;
+    todayClose?: string;
+  } | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/business-hours')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) setBusinessStatus(data);
+        setStatusLoading(false);
+      })
+      .catch(() => setStatusLoading(false));
+  }, []);
 
   useEffect(() => {
     fetch('/api/offers').then(r => r.ok ? r.json() : []).then(setOffers).catch(() => {});
@@ -46,6 +65,73 @@ export default function CustomerLayout() {
   const goToCart = () => {
     navigate(`/customer/cart${qs ? '?' + qs : ''}`);
   };
+
+  // Show loading while checking business status
+  if (statusLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-cream)' }}>
+        <div style={{ color: 'var(--text-light)', fontSize: 14 }}>{t('common.loading')}</div>
+      </div>
+    );
+  }
+
+  // Show closed page if not open
+  if (businessStatus && !businessStatus.isOpen) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        minHeight: '100vh', padding: 20, textAlign: 'center', background: 'var(--bg-cream)',
+        maxWidth: 430, margin: '0 auto', width: '100%',
+      }}>
+        {/* Language switcher */}
+        <div style={{ position: 'absolute', top: 16, right: 16 }}>
+          <LanguageSwitcher />
+        </div>
+
+        {/* Branding */}
+        <div style={{
+          background: 'linear-gradient(135deg, #8B1A1A 0%, #C41E24 50%, #D4342A 100%)',
+          borderRadius: 16, padding: '40px 32px', marginBottom: 32, width: '100%', maxWidth: 340,
+          color: '#fff', position: 'relative', overflow: 'hidden',
+        }}>
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <h1 style={{ fontFamily: "'Noto Serif SC', serif", fontSize: 26, fontWeight: 700, letterSpacing: 3, marginBottom: 4 }}>
+              港知味
+            </h1>
+            <div style={{ fontSize: 12, fontWeight: 300, letterSpacing: 6, color: '#F0D68A', textTransform: 'uppercase' }}>
+              TASTE OF HONG KONG
+            </div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 56, marginBottom: 16 }}>🌙</div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+          {t('customer.shopClosed')}
+        </h2>
+        <p style={{ color: 'var(--text-light)', fontSize: 14, maxWidth: 300, lineHeight: 1.6 }}>
+          {businessStatus.reason === 'closed_today'
+            ? t('customer.closedToday')
+            : businessStatus.reason === 'day_off'
+              ? t('customer.dayOff')
+              : t('customer.outsideHours')
+          }
+        </p>
+        {businessStatus.todayOpen && businessStatus.todayClose && (
+          <div style={{
+            marginTop: 20, padding: '12px 24px', borderRadius: 12,
+            background: 'var(--bg-white)', border: '1px solid var(--border-light)',
+          }}>
+            <div style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 4 }}>
+              {t('customer.todayHours')}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
+              {businessStatus.todayOpen} — {businessStatus.todayClose}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: 430, margin: '0 auto', width: '100%', background: 'var(--bg-cream)' }}>

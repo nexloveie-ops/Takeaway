@@ -66,7 +66,12 @@
     "expand": "展开",
     "collapse": "收起",
     "selectOptions": "选择选项",
-    "confirmAdd": "确认添加"
+    "confirmAdd": "确认添加",
+    "shopClosed": "店铺已打烊",
+    "closedToday": "今天是特殊休息日，暂停营业。",
+    "dayOff": "今天是休息日，暂停营业。",
+    "outsideHours": "当前不在营业时间内，请在营业时间内再来。",
+    "todayHours": "今日营业时间"
   },
   "cashier": {
     "title": "收银台",
@@ -116,6 +121,7 @@
     "reports": "营业报表",
     "users": "用户管理",
     "systemConfig": "系统配置",
+    "businessHours": "营业时间",
     "restaurantInfo": "餐馆信息",
     "restaurantNameZh": "餐馆名称（中文）",
     "restaurantNameEn": "餐馆名称（英文）",
