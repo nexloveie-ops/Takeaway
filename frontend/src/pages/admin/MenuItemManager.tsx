@@ -134,7 +134,12 @@ export default function MenuItemManager() {
 
   const uploadAR = async (id: string, file: File) => {
     const fd = new FormData(); fd.append('ar', file);
-    await fetch(`/api/menu/items/${id}/ar`, { method: 'POST', headers: authHeaders, body: fd });
+    const res = await fetch(`/api/menu/items/${id}/ar`, { method: 'POST', headers: authHeaders, body: fd });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      alert(data?.error?.message || 'AR upload failed');
+      return;
+    }
     fetchData();
   };
 
@@ -379,7 +384,7 @@ export default function MenuItemManager() {
                     ) : (
                       <span className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 8px', display: 'inline-block' }}>上传 AR</span>
                     )}
-                    <input type="file" accept=".usdz" hidden onChange={e => { if (e.target.files?.[0]) { uploadAR(item._id, e.target.files[0]); e.target.value = ''; } }} />
+                    <input type="file" accept=".usdz,.glb" hidden onChange={e => { if (e.target.files?.[0]) { uploadAR(item._id, e.target.files[0]); e.target.value = ''; } }} />
                   </label>
                 </td>
                 <td style={{ padding: '8px 12px', textAlign: 'center' }}>

@@ -27,7 +27,7 @@ const ALLOWED_IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 // Use temp dir for initial upload, then move to GCS or local
 const tempUpload = multer({
   dest: os.tmpdir(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
 /**
@@ -362,9 +362,9 @@ router.post(
       }
 
       const ext = path.extname(req.file.originalname).toLowerCase();
-      if (ext !== '.usdz') {
+      if (ext !== '.usdz' && ext !== '.glb') {
         cleanupFile(req.file);
-        throw createAppError('INVALID_FILE_FORMAT', 'Only USDZ format is accepted for AR files');
+        throw createAppError('INVALID_FILE_FORMAT', 'Only USDZ and GLB formats are accepted for AR files');
       }
 
       const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
