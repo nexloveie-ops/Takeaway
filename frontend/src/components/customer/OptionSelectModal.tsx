@@ -36,34 +36,76 @@ export default function OptionSelectModal({ itemName, price, optionGroups, onCon
   const getNameMap = (translations: { locale: string; name: string }[]): Record<string, string> =>
     Object.fromEntries(translations.map(t2 => [t2.locale, t2.name]));
 
-  // selections: groupId -> choiceId
-  const [selections, setSelections] = useState<Record<string, string>>({});
+  // selections: groupId -> choiceId (single) for required, groupId -> choiceId[] (multi) for optional
+  const [singleSelections, setSingleSelections] = useState<Record<string, string>>({});
+  const [multiSelections, setMultiSelections] = useState<Record<string, string[]>>({});
 
-  const canConfirm = optionGroups.every(g => !g.required || selections[g._id]);
+  const canConfirm = optionGroups.every(g => !g.required || singleSelections[g._id]);
+
+  const toggleSingle = (groupId: string, choiceId: string) => {
+    setSingleSelections(prev => {
+      const next = { ...prev };
+      if (next[groupId] === choiceId) delete next[groupId];
+      else next[groupId] = choiceId;
+      return next;
+    });
+  };
+
+  const toggleMulti = (groupId: string, choiceId: string) => {
+    setMultiSelections(prev => {
+      const current = prev[groupId] || [];
+      const next = current.includes(choiceId)
+        ? current.filter(id => id !== choiceId)
+        : [...current, choiceId];
+      return { ...prev, [groupId]: next };
+    });
+  };
 
   const handleConfirm = () => {
     const options: CartItemOption[] = [];
     for (const group of optionGroups) {
-      const choiceId = selections[group._id];
-      if (!choiceId) continue;
-      const choice = group.choices.find(c => c._id === choiceId);
-      if (!choice) continue;
-      options.push({
-        groupId: group._id,
-        choiceId: choice._id,
-        groupName: getNameMap(group.translations),
-        choiceName: getNameMap(choice.translations),
-        extraPrice: choice.extraPrice || 0,
-      });
+      if (group.required) {
+        // Single select
+        const choiceId = singleSelections[group._id];
+        if (!choiceId) continue;
+        const choice = group.choices.find(c => c._id === choiceId);
+        if (!choice) continue;
+        options.push({
+          groupId: group._id, choiceId: choice._id,
+          groupName: getNameMap(group.translations), choiceName: getNameMap(choice.translations),
+          extraPrice: choice.extraPrice || 0,
+        });
+      } else {
+        // Multi select
+        const choiceIds = multiSelections[group._id] || [];
+        for (const choiceId of choiceIds) {
+          const choice = group.choices.find(c => c._id === choiceId);
+          if (!choice) continue;
+          options.push({
+            groupId: group._id, choiceId: choice._id,
+            groupName: getNameMap(group.translations), choiceName: getNameMap(choice.translations),
+            extraPrice: choice.extraPrice || 0,
+          });
+        }
+      }
     }
     onConfirm(options);
   };
 
-  const totalExtra = Object.entries(selections).reduce((sum, [gId, cId]) => {
-    const group = optionGroups.find(g => g._id === gId);
-    const choice = group?.choices.find(c => c._id === cId);
-    return sum + (choice?.extraPrice || 0);
-  }, 0);
+  const totalExtra = (() => {
+    let sum = 0;
+    for (const group of optionGroups) {
+      if (group.required) {
+        const cId = singleSelections[group._id];
+        if (cId) { const c = group.choices.find(x => x._id === cId); sum += c?.extraPrice || 0; }
+      } else {
+        for (const cId of (multiSelections[group._id] || [])) {
+          const c = group.choices.find(x => x._id === cId); sum += c?.extraPrice || 0;
+        }
+      }
+    }
+    return sum;
+  })();
 
   return (
     <div onClick={onClose} style={{
@@ -89,17 +131,18 @@ export default function OptionSelectModal({ itemName, price, optionGroups, onCon
             <div key={group._id} style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {getName(group.translations)}
-                {group.required && <span style={{ fontSize: 11, color: '#fff', background: 'var(--red-primary)', padding: '1px 6px', borderRadius: 4 }}>{t('admin.required')}</span>}
+                {group.required
+                  ? <span style={{ fontSize: 11, color: '#fff', background: 'var(--red-primary)', padding: '1px 6px', borderRadius: 4 }}>{t('admin.required')}</span>
+                  : <span style={{ fontSize: 11, color: 'var(--text-light)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>多选</span>
+                }
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
                 {group.choices.map(choice => {
-                  const selected = selections[group._id] === choice._id;
+                  const selected = group.required
+                    ? singleSelections[group._id] === choice._id
+                    : (multiSelections[group._id] || []).includes(choice._id);
                   return (
-                    <div key={choice._id} onClick={() => setSelections(prev => {
-                        const next = { ...prev };
-                        if (next[group._id] === choice._id) { delete next[group._id]; } else { next[group._id] = choice._id; }
-                        return next;
-                      })}
+                    <div key={choice._id} onClick={() => group.required ? toggleSingle(group._id, choice._id) : toggleMulti(group._id, choice._id)}
                       style={{
                         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                         padding: '10px 8px', borderRadius: 10, cursor: 'pointer', transition: 'all 0.12s',
