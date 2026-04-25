@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +23,7 @@ export default function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
@@ -29,37 +31,51 @@ export default function AdminLayout() {
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Sidebar */}
       <div style={{
-        width: 220, flexShrink: 0, background: 'var(--bg-white)',
+        width: collapsed ? 56 : 220, flexShrink: 0, background: 'var(--bg-white)',
         borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
+        overflow: 'hidden', transition: 'width 0.2s ease',
       }}>
         <div style={{
-          padding: '16px 20px', borderBottom: '1px solid var(--border)',
+          padding: collapsed ? '16px 0' : '16px 20px', borderBottom: '1px solid var(--border)',
           fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 18,
-          color: 'var(--red-primary)', letterSpacing: 2,
+          color: 'var(--red-primary)', letterSpacing: 2, textAlign: collapsed ? 'center' : 'left',
+          whiteSpace: 'nowrap', overflow: 'hidden',
         }}>
-          港知味
-          <div style={{ fontSize: 10, color: 'var(--text-light)', letterSpacing: 3, fontFamily: 'var(--font-body)', fontWeight: 400 }}>
-            {t('admin.title')}
-          </div>
+          {collapsed ? '港' : '港知味'}
+          {!collapsed && (
+            <div style={{ fontSize: 10, color: 'var(--text-light)', letterSpacing: 3, fontFamily: 'var(--font-body)', fontWeight: 400 }}>
+              {t('admin.title')}
+            </div>
+          )}
         </div>
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {sidebarItems.map(item => (
             <NavLink key={item.path} to={item.path}
+              title={collapsed ? t(item.key) : undefined}
               style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: '12px 20px', fontSize: 13, fontWeight: isActive ? 600 : 400,
+                padding: collapsed ? '12px 0' : '12px 20px',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                fontSize: 13, fontWeight: isActive ? 600 : 400,
                 color: isActive ? 'var(--red-primary)' : 'var(--text-secondary)',
                 background: isActive ? 'var(--red-light)' : 'transparent',
                 borderLeft: isActive ? '4px solid var(--red-primary)' : '4px solid transparent',
                 textDecoration: 'none', transition: 'var(--transition)',
+                whiteSpace: 'nowrap', overflow: 'hidden',
               })}
             >
-              <span style={{ fontSize: 16 }}>{item.icon}</span>
-              {t(item.key)}
+              <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+              {!collapsed && t(item.key)}
             </NavLink>
           ))}
         </nav>
+        {/* Toggle button */}
+        <button onClick={() => setCollapsed(!collapsed)} style={{
+          padding: '10px 0', border: 'none', borderTop: '1px solid var(--border)',
+          background: 'var(--bg)', cursor: 'pointer', fontSize: 16, color: 'var(--text-light)',
+        }}>
+          {collapsed ? '»' : '«'}
+        </button>
       </div>
 
       {/* Main */}
