@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 interface Translation { locale: string; name: string; description?: string; }
 interface Category { _id: string; translations: Translation[]; }
 interface AllergenData { _id: string; name: string; icon: string; translations: { locale: string; name: string }[]; }
-interface OptionChoiceData { _id?: string; extraPrice: number; translations: { locale: string; name: string }[]; }
+interface OptionChoiceData { _id?: string; extraPrice: number; originalPrice?: number; translations: { locale: string; name: string }[]; }
 interface OptionGroupData { _id?: string; required: boolean; translations: { locale: string; name: string }[]; choices: OptionChoiceData[]; }
 interface MenuItem {
   _id: string; categoryId: string; price: number; calories?: number;

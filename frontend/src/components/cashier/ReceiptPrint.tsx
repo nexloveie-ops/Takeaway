@@ -26,7 +26,7 @@ interface ReceiptData {
   type: 'table' | 'seat';
   tableNumber?: number;
   totalAmount: number;
-  paymentMethod: 'cash' | 'card' | 'mixed';
+  paymentMethod: 'cash' | 'card' | 'mixed' | 'online';
   cashAmount?: number;
   cardAmount?: number;
   checkedOutAt: string;
@@ -83,7 +83,7 @@ function buildReceiptHTML(
   const isDineIn = receipt.orders.some(o => o.type === 'dine_in');
   const isPhone = receipt.orders.some(o => o.type === 'phone');
   const checkedOutAt = new Date(receipt.checkedOutAt);
-  const paymentLabel = receipt.paymentMethod === 'cash' ? 'Cash' : receipt.paymentMethod === 'card' ? 'Card' : 'Mixed';
+  const paymentLabel = receipt.paymentMethod === 'cash' ? 'Cash' : receipt.paymentMethod === 'card' ? 'Card' : receipt.paymentMethod === 'online' ? 'Online' : 'Mixed';
   const restaurantName = config.restaurant_name_en || config.restaurant_name_zh || '';
   const termsSegments = config.receipt_terms ? parseQRCodes(config.receipt_terms) : [];
 
@@ -293,7 +293,7 @@ export default function ReceiptPrint({ checkoutId, cashReceived, changeAmount, b
   const isDineIn = receipt.orders.some(o => o.type === 'dine_in');
   const isPhonePreview = receipt.orders.some(o => o.type === 'phone');
   const checkedOutAt = new Date(receipt.checkedOutAt);
-  const paymentLabel = receipt.paymentMethod === 'cash' ? 'Cash' : receipt.paymentMethod === 'card' ? 'Card' : 'Mixed';
+  const paymentLabel = receipt.paymentMethod === 'cash' ? 'Cash' : receipt.paymentMethod === 'card' ? 'Card' : receipt.paymentMethod === 'online' ? 'Online' : 'Mixed';
   const restaurantName = config.restaurant_name_en || config.restaurant_name_zh || '';
   const termsSegments = config.receipt_terms ? parseQRCodes(config.receipt_terms) : [];
 
