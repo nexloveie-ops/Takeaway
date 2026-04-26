@@ -30,6 +30,7 @@ export default function MenuItemCard({
   const [expanded, setExpanded] = useState(false);
   const [isClamped, setIsClamped] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showPhoto, setShowPhoto] = useState(false);
   const descRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,12 +86,15 @@ export default function MenuItemCard({
         )}
 
         {/* Image */}
-        <div style={{
-          width: 100, height: 100, borderRadius: 8, flexShrink: 0,
-          background: photoUrl ? `url(${photoUrl}) center/cover` : 'linear-gradient(135deg, #f5e6d0, #edd9c0)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 36, filter: isSoldOut ? 'grayscale(60%)' : 'none',
-        }}>
+        <div
+          onClick={photoUrl ? (e) => { e.stopPropagation(); setShowPhoto(true); } : undefined}
+          style={{
+            width: 100, height: 100, borderRadius: 8, flexShrink: 0,
+            background: photoUrl ? `url(${photoUrl}) center/cover` : 'linear-gradient(135deg, #f5e6d0, #edd9c0)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 36, filter: isSoldOut ? 'grayscale(60%)' : 'none',
+            cursor: photoUrl ? 'zoom-in' : undefined,
+          }}>
           {!photoUrl && '🍽️'}
         </div>
 
@@ -195,6 +199,36 @@ export default function MenuItemCard({
           onConfirm={handleOptionConfirm}
           onClose={() => setShowOptions(false)}
         />
+      )}
+
+      {/* Photo lightbox */}
+      {showPhoto && photoUrl && (
+        <div
+          onClick={() => setShowPhoto(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={photoUrl}
+            alt={name}
+            style={{
+              maxWidth: '90vw', maxHeight: '85vh',
+              borderRadius: 12, objectFit: 'contain',
+              boxShadow: '0 4px 30px rgba(0,0,0,0.5)',
+            }}
+          />
+          <div style={{
+            position: 'absolute', bottom: 40, left: 0, right: 0,
+            textAlign: 'center', color: '#fff', fontSize: 16, fontWeight: 600,
+            textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+          }}>
+            {name} · €{price}
+          </div>
+        </div>
       )}
     </>
   );
