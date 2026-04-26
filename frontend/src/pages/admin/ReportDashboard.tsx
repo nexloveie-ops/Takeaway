@@ -42,6 +42,7 @@ interface OrderItem {
   itemName: string;
   itemNameEn?: string;
   refunded?: boolean;
+  selectedOptions?: { groupName?: string; choiceName?: string; extraPrice?: number }[];
 }
 
 interface DetailOrder {
@@ -156,7 +157,7 @@ export default function ReportDashboard() {
   const euro = (v: number) => `€${v.toFixed(2)}`;
 
   const orderTotal = (o: DetailOrder) =>
-    o.checkout?.totalAmount ?? o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+    o.checkout?.totalAmount ?? o.items.reduce((s, i) => s + (i.unitPrice + (i.selectedOptions || []).reduce((x, op) => x + (op.extraPrice || 0), 0)) * i.quantity, 0);
 
   /** De-duplicate checkout totals (one checkout may cover multiple orders) */
   const deduplicatedTotal = (orders: DetailOrder[]) => {
@@ -344,7 +345,7 @@ export default function ReportDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   {modalConfig.filters.status === 'refunded'
-                    ? `${modalOrders.length} 条订单 · 退单菜品 ${modalOrders.reduce((s, o) => s + o.items.filter(i => i.refunded).length, 0)} 项 · 退款 ${euro(modalOrders.reduce((s, o) => s + o.items.filter(i => i.refunded).reduce((a, i) => a + i.unitPrice * i.quantity, 0), 0))}`
+                    ? `${modalOrders.length} 条订单 · 退单菜品 ${modalOrders.reduce((s, o) => s + o.items.filter(i => i.refunded).length, 0)} 项 · 退款 ${euro(modalOrders.reduce((s, o) => s + o.items.filter(i => i.refunded).reduce((a, i) => a + (i.unitPrice + (i.selectedOptions || []).reduce((x: number, op: { extraPrice?: number }) => x + (op.extraPrice || 0), 0)) * i.quantity, 0), 0))}`
                     : `共 ${modalOrders.length} 条 · 合计 ${euro(deduplicatedTotal(modalOrders))}`
                   }
                 </span>
