@@ -76,6 +76,16 @@ export default function OrderDetail({ orders }: OrderDetailProps) {
                     )}
                   </div>
                 ))}
+                {order.appliedBundles && order.appliedBundles.length > 0 && (
+                  <div style={{ padding: '6px 0' }}>
+                    {order.appliedBundles.map((b, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#E65100' }}>
+                        <span>🎁 {b.name}</span>
+                        <span style={{ fontWeight: 600, minWidth: 50, textAlign: 'right' }}>-€{b.discount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -9,6 +9,7 @@ interface OrderItem { _id: string; menuItemId: string; quantity: number; unitPri
 interface TakeoutOrder {
   _id: string; type: string; dailyOrderNumber?: number; status: string;
   items: OrderItem[]; createdAt: string;
+  appliedBundles?: { name: string; nameEn?: string; discount: number }[];
 }
 
 export default function TakeoutOrderList() {
@@ -23,6 +24,7 @@ export default function TakeoutOrderList() {
   const [cashReceived, setCashReceived] = useState('');
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
   const [checkoutMeta, setCheckoutMeta] = useState<{ total: number; cashReceived: number; change: number } | null>(null);
+  const [checkoutBundles, setCheckoutBundles] = useState<{ name: string; nameEn: string; discount: number }[]>([]);
   const [config, setConfig] = useState<Record<string, string>>({});
   const [finalizing, setFinalizing] = useState(false);
 
@@ -47,17 +49,19 @@ export default function TakeoutOrderList() {
   }, [fetchOrders]);
 
   const selectedOrder = orders.find(o => o._id === selected);
-  const orderTotal = (o: TakeoutOrder) => o.items.reduce((s, i) => {
-    const optExtra = (i.selectedOptions || []).reduce((a: number, opt: { extraPrice?: number }) => a + (opt.extraPrice || 0), 0);
-    return s + (i.unitPrice + optExtra) * i.quantity;
-  }, 0);
+  const orderTotal = (o: TakeoutOrder) => {
+    const itemsSum = o.items.reduce((s, i) => {
+      const optExtra = (i.selectedOptions || []).reduce((a: number, opt: { extraPrice?: number }) => a + (opt.extraPrice || 0), 0);
+      return s + (i.unitPrice + optExtra) * i.quantity;
+    }, 0);
+    const bundleDisc = (o.appliedBundles || []).reduce((a, b) => a + b.discount, 0);
+    return itemsSum - bundleDisc;
+  };
 
-  // Default cashReceived when selecting order or switching to cash
+  // Reset cashReceived when selecting a new order
   useEffect(() => {
-    if (paymentMethod === 'cash' && selectedOrder) {
-      setCashReceived(orderTotal(selectedOrder).toFixed(2));
-    }
-  }, [selected, paymentMethod]);
+    setCashReceived('');
+  }, [selected]);
 
   const cashReceivedNum = parseFloat(cashReceived) || 0;
   const currentTotal = selectedOrder ? orderTotal(selectedOrder) : 0;
@@ -88,7 +92,8 @@ export default function TakeoutOrderList() {
             items: order.items,
           }],
         };
-        const html = buildReceiptHTML(receiptData, config);
+        const bundleDiscounts = (order.appliedBundles || []).map(b => ({ name: b.name, nameEn: b.nameEn || '', discount: b.discount }));
+        const html = buildReceiptHTML(receiptData, config, undefined, undefined, bundleDiscounts);
         printViaIframe(html, 1);
         setSelected(null);
         fetchOrders();
@@ -117,6 +122,7 @@ export default function TakeoutOrderList() {
         const data = await res.json();
         setCheckoutId(data._id);
         setCheckoutMeta({ total, cashReceived: cashReceivedNum, change: changeAmount });
+        setCheckoutBundles((selectedOrder.appliedBundles || []).map(b => ({ name: b.name, nameEn: b.nameEn || '', discount: b.discount })));
       }
     } catch { /* ignore */ }
     finally { setCheckingOut(false); }
@@ -166,7 +172,7 @@ export default function TakeoutOrderList() {
             🖨️ {t('cashier.printReceipt')}
           </button>
         </div>
-        <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} />
+        <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} bundleDiscounts={checkoutBundles} />
       </div>
     );
   }
@@ -224,6 +230,16 @@ export default function TakeoutOrderList() {
             ))}
           </div>
           <div style={{ padding: 16, borderTop: '2px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {selectedOrder.appliedBundles && selectedOrder.appliedBundles.length > 0 && (
+              <div style={{ padding: '8px 10px', background: '#FFF3E0', borderRadius: 8, fontSize: 13 }}>
+                {selectedOrder.appliedBundles.map((b, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', color: '#E65100' }}>
+                    <span>🎁 {b.name}</span>
+                    <span style={{ fontWeight: 600 }}>-€{b.discount.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 18 }}>
               <span>{t('cashier.total')}</span>
               <span style={{ color: selectedOrder.status === 'paid_online' ? '#2E7D32' : 'var(--red-primary)' }}>€{currentTotal.toFixed(2)}</span>
@@ -244,7 +260,7 @@ export default function TakeoutOrderList() {
             <>
             <div style={{ display: 'flex', gap: 6 }}>
               {(['cash', 'card', 'mixed'] as const).map(m => (
-                <button key={m} onClick={() => { setPaymentMethod(m); if (m === 'cash') setCashReceived(currentTotal.toFixed(2)); else setCashReceived(''); }} className="btn" style={{
+                <button key={m} onClick={() => { setPaymentMethod(m); setCashReceived(''); }} className="btn" style={{
                   flex: 1, fontSize: 12, padding: '8px 0',
                   background: paymentMethod === m ? 'var(--red-primary)' : 'var(--bg)',
                   color: paymentMethod === m ? '#fff' : 'var(--text-secondary)',

@@ -174,7 +174,7 @@ export default function CashierOrder() {
       return;
     }
     setPayingTotal(finalTotal);
-    setCashReceived(finalTotal.toFixed(2));
+    setCashReceived('');
     setPaymentMethod('cash');
     setSelectedCoupon(null);
     setError('');
@@ -502,8 +502,8 @@ export default function CashierOrder() {
                     const isSelected = selectedCoupon?.name === c.name && selectedCoupon?.amount === c.amount;
                     return (
                       <button key={c._id} onClick={() => {
-                        if (isSelected) { setSelectedCoupon(null); setCashReceived(payingTotal.toFixed(2)); }
-                        else { setSelectedCoupon(c); setCashReceived(Math.max(0, payingTotal - c.amount).toFixed(2)); }
+                        if (isSelected) { setSelectedCoupon(null); setCashReceived(''); }
+                        else { setSelectedCoupon(c); setCashReceived(''); }
                       }}
                         className="btn" style={{
                           padding: '6px 12px', fontSize: 12, borderRadius: 20,
@@ -527,7 +527,7 @@ export default function CashierOrder() {
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               {(['cash', 'card', 'mixed'] as const).map(m => (
-                <button key={m} onClick={() => { setPaymentMethod(m); if (m === 'cash') setCashReceived(payAfterCoupon.toFixed(2)); }} className="btn" style={{ flex: 1, background: paymentMethod === m ? 'var(--red-primary)' : 'var(--bg)', color: paymentMethod === m ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                <button key={m} onClick={() => { setPaymentMethod(m); setCashReceived(''); }} className="btn" style={{ flex: 1, background: paymentMethod === m ? 'var(--red-primary)' : 'var(--bg)', color: paymentMethod === m ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>
                   {t(`cashier.${m}`)}
                 </button>
               ))}

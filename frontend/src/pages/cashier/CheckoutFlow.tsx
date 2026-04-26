@@ -66,17 +66,16 @@ export default function CheckoutFlow() {
   const [loading, setLoading] = useState(false);
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
   const [checkoutMeta, setCheckoutMeta] = useState<{ total: number; cashReceived: number; change: number } | null>(null);
+  const [checkoutBundles, setCheckoutBundles] = useState<{ name: string; nameEn: string; discount: number }[]>([]);
   const [error, setError] = useState('');
 
   // Editable items (for price discount)
   const [editableItems, setEditableItems] = useState<EditableItem[]>([]);
 
-  // Default cashReceived to total when items change and payment is cash
+  // Reset cashReceived when items change
   useEffect(() => {
-    if (paymentMethod === 'cash' && editableItems.length > 0) {
-      setCashReceived(calcTotal(editableItems).toFixed(2));
-    }
-  }, [editableItems, paymentMethod]);
+    setCashReceived('');
+  }, [editableItems]);
 
   const fetchOrders = useCallback(async () => {
     if (orderId) {
@@ -107,7 +106,20 @@ export default function CheckoutFlow() {
     setEditableItems(items);
   }, [orders, mode, selectedSeat, seatGroups]);
 
-  const displayTotal = calcTotal(editableItems);
+  const displayTotal = useMemo(() => {
+    const itemsSum = calcTotal(editableItems);
+    const sg = seatGroups.find(g => g.seatNumber === selectedSeat);
+    const relevantOrders = mode === 'seat' && sg ? sg.orders : orders;
+    const bundleDisc = relevantOrders.reduce((s, o) => s + (o.appliedBundles || []).reduce((a, b) => a + b.discount, 0), 0);
+    return Math.max(0, itemsSum - bundleDisc);
+  }, [editableItems, orders, mode, selectedSeat, seatGroups]);
+
+  // Collect bundle info for display
+  const activeBundles = useMemo(() => {
+    const sg = seatGroups.find(g => g.seatNumber === selectedSeat);
+    const relevantOrders = mode === 'seat' && sg ? sg.orders : orders;
+    return relevantOrders.flatMap(o => o.appliedBundles || []);
+  }, [orders, mode, selectedSeat, seatGroups]);
 
   const updateItemPrice = (menuItemId: string, newPrice: number) => {
     setEditableItems(prev => prev.map(i => i.menuItemId === menuItemId ? { ...i, editPrice: Math.max(0, newPrice) } : i));
@@ -143,6 +155,7 @@ export default function CheckoutFlow() {
         const data = await res.json();
         setCheckoutId(data._id);
         setCheckoutMeta(meta);
+        setCheckoutBundles(activeBundles);
       } else {
         const activeSG = seatGroups.find(g => g.seatNumber === selectedSeat);
         if (!activeSG) return;
@@ -159,6 +172,7 @@ export default function CheckoutFlow() {
         }
         setCheckoutId(lastId);
         setCheckoutMeta(meta);
+        setCheckoutBundles(activeBundles);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Checkout failed');
@@ -193,7 +207,7 @@ export default function CheckoutFlow() {
             🖨️ {t('cashier.printReceipt')}
           </button>
         </div>
-        <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} />
+        <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} bundleDiscounts={checkoutBundles} />
       </div>
     );
   }
@@ -304,6 +318,16 @@ export default function CheckoutFlow() {
 
       {/* Payment */}
       <div className="card" style={{ padding: 16 }}>
+        {activeBundles.length > 0 && (
+          <div style={{ padding: '8px 10px', background: '#FFF3E0', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+            {activeBundles.map((b, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', color: '#E65100' }}>
+                <span>🎁 {b.name}</span>
+                <span style={{ fontWeight: 600 }}>-€{b.discount.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 20, marginBottom: 16 }}>
           <span>{t('cashier.total')}</span>
           <span style={{ color: 'var(--red-primary)', fontFamily: "'Noto Serif SC', serif" }}>€{displayTotal.toFixed(2)}</span>
@@ -311,7 +335,7 @@ export default function CheckoutFlow() {
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           {(['cash', 'card', 'mixed'] as const).map(m => (
-            <button key={m} onClick={() => { setPaymentMethod(m); if (m === 'cash') setCashReceived(displayTotal.toFixed(2)); else setCashReceived(''); }} className="btn" style={{
+            <button key={m} onClick={() => { setPaymentMethod(m); setCashReceived(''); }} className="btn" style={{
               flex: 1, background: paymentMethod === m ? 'var(--red-primary)' : 'var(--bg)',
               color: paymentMethod === m ? '#fff' : 'var(--text-secondary)',
               border: '1px solid var(--border)',

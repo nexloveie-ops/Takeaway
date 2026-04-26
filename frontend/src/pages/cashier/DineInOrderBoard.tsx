@@ -115,7 +115,8 @@ export default function DineInOrderBoard() {
               })),
             }],
           };
-          const html = buildReceiptHTML(receiptData, config);
+          const bundleDiscounts = (order.appliedBundles || []).map(b => ({ name: b.name, nameEn: b.nameEn || '', discount: b.discount }));
+          const html = buildReceiptHTML(receiptData, config, undefined, undefined, bundleDiscounts);
           printViaIframe(html, 1);
         }
       }

@@ -33,6 +33,7 @@ export default function PhoneOrderList() {
   // Receipt state
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
   const [checkoutMeta, setCheckoutMeta] = useState<{ total: number; cashReceived: number; change: number } | null>(null);
+  const [checkoutBundles, setCheckoutBundles] = useState<{ name: string; nameEn: string; discount: number }[]>([]);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -67,9 +68,7 @@ export default function PhoneOrderList() {
 
   const openPayment = (orderId: string) => {
     setSelected(orderId);
-    const o = orders.find(x => x._id === orderId);
-    const total = o ? orderTotal(o) : 0;
-    setCashReceived(total.toFixed(2));
+    setCashReceived('');
     setPaymentMethod('cash');
     setShowPayment(true);
   };
@@ -92,6 +91,7 @@ export default function PhoneOrderList() {
       const data = await res.json();
       setCheckoutId(data._id);
       setCheckoutMeta({ total: selectedTotal, cashReceived: cashReceivedNum, change: changeAmount });
+      setCheckoutBundles((selectedOrder.appliedBundles || []).map(b => ({ name: b.name, nameEn: b.nameEn || '', discount: b.discount })));
       setShowPayment(false);
       fetchOrders();
     } catch (e) {
@@ -124,7 +124,7 @@ export default function PhoneOrderList() {
           <button className="btn btn-primary" onClick={() => { setCheckoutId(null); setCheckoutMeta(null); setSelected(null); }}>继续</button>
           <button className="btn btn-outline" onClick={() => window.print()} style={{ marginLeft: 8 }}>🖨️ 打印小票</button>
         </div>
-        <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} printCopies={1} />
+        <ReceiptPrint checkoutId={checkoutId} cashReceived={checkoutMeta?.cashReceived} changeAmount={checkoutMeta?.change} bundleDiscounts={checkoutBundles} printCopies={1} />
       </div>
     );
   }
@@ -186,7 +186,7 @@ export default function PhoneOrderList() {
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               {(['cash', 'card', 'mixed'] as const).map(m => (
-                <button key={m} onClick={() => { setPaymentMethod(m); if (m === 'cash') setCashReceived(selectedTotal.toFixed(2)); }} className="btn" style={{ flex: 1, background: paymentMethod === m ? 'var(--red-primary)' : 'var(--bg)', color: paymentMethod === m ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                <button key={m} onClick={() => { setPaymentMethod(m); setCashReceived(''); }} className="btn" style={{ flex: 1, background: paymentMethod === m ? 'var(--red-primary)' : 'var(--bg)', color: paymentMethod === m ? '#fff' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>
                   {t(`cashier.${m}`)}
                 </button>
               ))}
