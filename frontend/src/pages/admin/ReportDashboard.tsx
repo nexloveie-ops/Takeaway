@@ -387,11 +387,18 @@ export default function ReportDashboard() {
                               color: o.type === 'dine_in' ? 'var(--red-primary)' : '#1976D2',
                             }}>{o.type === 'dine_in' ? '堂食' : '外卖'}</span>
                           </td>
-                          <td style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 220 }}>
+                          <td style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 280 }}>
                             {o.items.map((i, idx) => (
-                              <span key={idx} style={{ textDecoration: i.refunded ? 'line-through' : 'none', color: i.refunded ? '#F44336' : undefined }}>
-                                {idx > 0 && ', '}{i.itemName}×{i.quantity}{i.refunded && ' ↩'}
-                              </span>
+                              <div key={idx} style={{ marginBottom: idx < o.items.length - 1 ? 4 : 0 }}>
+                                <span style={{ textDecoration: i.refunded ? 'line-through' : 'none', color: i.refunded ? '#F44336' : undefined, fontWeight: 500 }}>
+                                  {i.itemName}×{i.quantity}{i.refunded && ' ↩'}
+                                </span>
+                                {i.selectedOptions && i.selectedOptions.length > 0 && (
+                                  <span style={{ fontSize: 11, color: 'var(--text-light)', marginLeft: 4 }}>
+                                    ({i.selectedOptions.map((op, oi) => `${op.choiceName || ''}${op.extraPrice ? ': €' + op.extraPrice : ''}`).filter(Boolean).join(', ')})
+                                  </span>
+                                )}
+                              </div>
                             ))}
                           </td>
                           <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--red-primary)' }}>{euro(orderTotal(o))}</td>

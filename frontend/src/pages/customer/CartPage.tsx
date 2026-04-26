@@ -15,6 +15,7 @@ export default function CartPage() {
   const [error, setError] = useState('');
   const [offers, setOffers] = useState<OfferData[]>([]);
   const [menuItemCategories, setMenuItemCategories] = useState<Record<string, string>>({});
+  const [offersLoaded, setOffersLoaded] = useState(false);
 
   const table = searchParams.get('table');
   const seat = searchParams.get('seat');
@@ -23,12 +24,15 @@ export default function CartPage() {
 
   // Fetch offers and menu item category mapping
   useEffect(() => {
-    fetch('/api/offers').then(r => r.ok ? r.json() : []).then(setOffers).catch(() => {});
+    let loaded = 0;
+    const check = () => { loaded++; if (loaded >= 2) setOffersLoaded(true); };
+    fetch('/api/offers').then(r => r.ok ? r.json() : []).then(d => { setOffers(d); check(); }).catch(() => check());
     fetch('/api/menu/items').then(r => r.ok ? r.json() : []).then((data: { _id: string; categoryId: string }[]) => {
       const map: Record<string, string> = {};
       for (const item of data) map[item._id] = item.categoryId;
       setMenuItemCategories(map);
-    }).catch(() => {});
+      check();
+    }).catch(() => check());
   }, []);
 
   // Bundle matching
@@ -226,9 +230,9 @@ export default function CartPage() {
           )}
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--red-primary)', fontFamily: "'Noto Serif SC', serif" }}>€{finalTotal.toFixed(2)}</div>
         </div>
-        <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}
+        <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || !offersLoaded}
           style={{ padding: '12px 28px', fontSize: 15, letterSpacing: 1 }}>
-          {submitting ? t('common.loading') : editOrderId ? t('customer.saveChanges') : t('customer.submitOrder')}
+          {!offersLoaded ? '...' : submitting ? t('common.loading') : editOrderId ? t('customer.saveChanges') : t('customer.submitOrder')}
         </button>
       </div>
     </div>
