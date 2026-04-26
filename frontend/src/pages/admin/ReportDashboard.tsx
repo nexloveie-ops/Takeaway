@@ -395,7 +395,7 @@ export default function ReportDashboard() {
                                 </span>
                                 {i.selectedOptions && i.selectedOptions.length > 0 && (
                                   <span style={{ fontSize: 11, color: 'var(--text-light)', marginLeft: 4 }}>
-                                    ({i.selectedOptions.map((op, oi) => `${op.choiceName || ''}${op.extraPrice ? ': €' + op.extraPrice : ''}`).filter(Boolean).join(', ')})
+                                    ({i.selectedOptions.map((op) => `${op.choiceName || ''}${op.extraPrice ? ': €' + op.extraPrice : ''}`).filter(Boolean).join(', ')})
                                   </span>
                                 )}
                               </div>
