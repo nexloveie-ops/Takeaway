@@ -255,18 +255,44 @@ router.get('/detailed', authMiddleware, requirePermission('report:view'), async 
     for (const order of allOrders) {
       const checkout = orderCheckoutMap.get(order._id.toString());
       const pm = checkout?.paymentMethod;
-      for (const item of order.items) {
-        if ((item as unknown as { refunded?: boolean }).refunded) {
-          refundedCount++;
+      const refundedItems = order.items.filter((item: { refunded?: boolean }) => (item as unknown as { refunded?: boolean }).refunded);
+      if (refundedItems.length === 0) continue;
+
+      refundedCount += refundedItems.length;
+
+      // Calculate refund amount considering bundle discounts
+      const allRefunded = order.items.length > 0 && order.items.every((item: { refunded?: boolean }) => (item as unknown as { refunded?: boolean }).refunded);
+      let amt: number;
+
+      if (allRefunded && checkout) {
+        // Full refund: use actual checkout amount (already includes bundle discount)
+        amt = checkout.totalAmount;
+      } else {
+        // Partial refund: calculate item prices and proportionally distribute bundle discount
+        let refundedItemsTotal = 0;
+        let allItemsTotal = 0;
+        for (const item of order.items) {
           const optExtra = ((item.selectedOptions || []) as { extraPrice?: number }[]).reduce((s, o) => s + (o.extraPrice || 0), 0);
-          const amt = (item.unitPrice + optExtra) * item.quantity;
-          refundedAmount += amt;
-          if (pm === 'cash') cashRefund += amt;
-          else if (pm === 'card') cardRefund += amt;
-          else if (pm === 'mixed') mixedRefund += amt;
-          else if (pm === 'online') onlineRefund += amt;
+          const itemAmt = (item.unitPrice + optExtra) * item.quantity;
+          allItemsTotal += itemAmt;
+          if ((item as unknown as { refunded?: boolean }).refunded) {
+            refundedItemsTotal += itemAmt;
+          }
+        }
+        const bundleDisc = ((order as unknown as { appliedBundles?: { discount: number }[] }).appliedBundles || []).reduce((s: number, b: { discount: number }) => s + b.discount, 0);
+        // Proportionally reduce refund by bundle discount ratio
+        if (allItemsTotal > 0 && bundleDisc > 0) {
+          amt = refundedItemsTotal * (1 - bundleDisc / allItemsTotal);
+        } else {
+          amt = refundedItemsTotal;
         }
       }
+
+      refundedAmount += amt;
+      if (pm === 'cash') cashRefund += amt;
+      else if (pm === 'card') cardRefund += amt;
+      else if (pm === 'mixed') mixedRefund += amt;
+      else if (pm === 'online') onlineRefund += amt;
     }
 
     // Net revenue = gross - refunded

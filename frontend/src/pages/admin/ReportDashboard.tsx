@@ -53,6 +53,7 @@ interface DetailOrder {
   dailyOrderNumber?: number;
   dineInOrderNumber?: string;
   items: OrderItem[];
+  appliedBundles?: { name: string; nameEn?: string; discount: number }[];
   createdAt: string;
   checkout?: {
     checkoutId: string;
@@ -155,6 +156,26 @@ export default function ReportDashboard() {
   };
 
   const euro = (v: number) => `€${v.toFixed(2)}`;
+
+  /** Calculate refund amount for an order, considering bundle discounts */
+  const calcOrderRefund = (o: DetailOrder) => {
+    const refundedItems = o.items.filter(i => i.refunded);
+    if (refundedItems.length === 0) return 0;
+    const allRefunded = o.items.length > 0 && o.items.every(i => i.refunded);
+    if (allRefunded && o.checkout) return o.checkout.totalAmount;
+    // Partial refund: proportionally distribute bundle discount
+    let refundedTotal = 0;
+    let allTotal = 0;
+    for (const i of o.items) {
+      const optExtra = (i.selectedOptions || []).reduce((x, op) => x + (op.extraPrice || 0), 0);
+      const amt = (i.unitPrice + optExtra) * i.quantity;
+      allTotal += amt;
+      if (i.refunded) refundedTotal += amt;
+    }
+    const bundleDisc = (o.appliedBundles || []).reduce((s, b) => s + b.discount, 0);
+    if (allTotal > 0 && bundleDisc > 0) return refundedTotal * (1 - bundleDisc / allTotal);
+    return refundedTotal;
+  };
 
   const orderTotal = (o: DetailOrder) =>
     o.checkout?.totalAmount ?? o.items.reduce((s, i) => s + (i.unitPrice + (i.selectedOptions || []).reduce((x, op) => x + (op.extraPrice || 0), 0)) * i.quantity, 0);
@@ -345,7 +366,7 @@ export default function ReportDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   {modalConfig.filters.status === 'refunded'
-                    ? `${modalOrders.length} 条订单 · 退单菜品 ${modalOrders.reduce((s, o) => s + o.items.filter(i => i.refunded).length, 0)} 项 · 退款 ${euro(modalOrders.reduce((s, o) => s + o.items.filter(i => i.refunded).reduce((a, i) => a + (i.unitPrice + (i.selectedOptions || []).reduce((x: number, op: { extraPrice?: number }) => x + (op.extraPrice || 0), 0)) * i.quantity, 0), 0))}`
+                    ? `${modalOrders.length} 条订单 · 退单菜品 ${modalOrders.reduce((s, o) => s + o.items.filter(i => i.refunded).length, 0)} 项 · 退款 ${euro(modalOrders.reduce((s, o) => s + calcOrderRefund(o), 0))}`
                     : `共 ${modalOrders.length} 条 · 合计 ${euro(deduplicatedTotal(modalOrders))}`
                   }
                 </span>
