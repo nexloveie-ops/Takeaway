@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../context/CartContext';
 import MenuItemCard from '../../components/customer/MenuItemCard';
 import OfferSelectModal from '../../components/customer/OfferSelectModal';
@@ -21,12 +22,33 @@ interface MenuItemData {
 
 export default function MenuView() {
   const { i18n } = useTranslation();
-  const { addItem, items: cartItems, decreaseQuantity, getItemKey } = useCart();
+  const { addItem, items: cartItems, decreaseQuantity, getItemKey, editOrderId } = useCart();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItemData[]>([]);
   const [allergens, setAllergens] = useState<AllergenData[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('');
   const lang = i18n.language;
+
+  const table = searchParams.get('table');
+  const seat = searchParams.get('seat');
+  const qs = searchParams.toString();
+
+  // On mount: check if there's an active order for this table/seat
+  // Skip if we're in edit mode (user came back from modifying an order)
+  useEffect(() => {
+    if (!table || !seat || editOrderId) return;
+    fetch(`/api/orders/dine-in/active?table=${table}&seat=${seat}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((orders: { _id: string }[]) => {
+        if (orders.length > 0) {
+          // Redirect to the most recent active order
+          navigate(`/customer/order/${orders[0]._id}?${qs}`, { replace: true });
+        }
+      })
+      .catch(() => {});
+  }, [table, seat, qs, editOrderId, navigate]);
 
   // Active offers for banner
   const [activeOffers, setActiveOffers] = useState<OfferData[]>([]);

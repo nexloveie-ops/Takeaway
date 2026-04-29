@@ -75,7 +75,7 @@ export function createOrdersRouter(io: SocketIOServer): Router {
         const itemNameEn = enTrans?.name || zhTrans?.name || itemName;
 
         // Resolve selectedOptions from menuItem's optionGroups
-        const selectedOptions: { groupName: string; choiceName: string; extraPrice: number }[] = [];
+        const selectedOptions: { groupName: string; groupNameEn: string; choiceName: string; choiceNameEn: string; extraPrice: number }[] = [];
         if (item.selectedOptions && Array.isArray(item.selectedOptions)) {
           const groups = (menuItem as unknown as { optionGroups?: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; choices: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; extraPrice: number }[] }[] }).optionGroups || [];
           for (const sel of item.selectedOptions) {
@@ -83,9 +83,11 @@ export function createOrdersRouter(io: SocketIOServer): Router {
             if (group) {
               const choice = group.choices.find((c) => c._id.toString() === sel.choiceId);
               if (choice) {
-                const groupName = group.translations && group.translations.length > 0 ? group.translations[0].name : '';
-                const choiceName = choice.translations && choice.translations.length > 0 ? choice.translations[0].name : '';
-                selectedOptions.push({ groupName, choiceName, extraPrice: choice.extraPrice || 0 });
+                const groupName = group.translations.find((t: { locale: string }) => t.locale === 'zh-CN')?.name || group.translations[0]?.name || '';
+                const groupNameEn = group.translations.find((t: { locale: string }) => t.locale === 'en-US')?.name || groupName;
+                const choiceName = choice.translations.find((t: { locale: string }) => t.locale === 'zh-CN')?.name || choice.translations[0]?.name || '';
+                const choiceNameEn = choice.translations.find((t: { locale: string }) => t.locale === 'en-US')?.name || choiceName;
+                selectedOptions.push({ groupName, groupNameEn, choiceName, choiceNameEn, extraPrice: choice.extraPrice || 0 });
               }
             }
           }
@@ -143,6 +145,25 @@ export function createOrdersRouter(io: SocketIOServer): Router {
   router.get('/dine-in', async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const orders = await Order.find({ type: 'dine_in', status: { $in: ['pending', 'paid_online'] } }).sort({ tableNumber: 1, seatNumber: 1 });
+      res.json(orders);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/orders/dine-in/active?table=X&seat=Y — Get active orders for a specific table/seat
+  router.get('/dine-in/active', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { table, seat } = req.query;
+      if (!table || !seat) {
+        return res.json([]);
+      }
+      const orders = await Order.find({
+        type: 'dine_in',
+        tableNumber: Number(table),
+        seatNumber: Number(seat),
+        status: { $in: ['pending', 'paid_online'] },
+      }).sort({ createdAt: -1 });
       res.json(orders);
     } catch (err) {
       next(err);
@@ -298,7 +319,7 @@ export function createOrdersRouter(io: SocketIOServer): Router {
         const itemNameEn = enTrans2?.name || zhTrans2?.name || itemName;
 
         // Resolve selectedOptions from menuItem's optionGroups
-        const selectedOptions: { groupName: string; choiceName: string; extraPrice: number }[] = [];
+        const selectedOptions: { groupName: string; groupNameEn: string; choiceName: string; choiceNameEn: string; extraPrice: number }[] = [];
         if (item.selectedOptions && Array.isArray(item.selectedOptions)) {
           const groups = (menuItem as unknown as { optionGroups?: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; choices: { _id: mongoose.Types.ObjectId; translations: { locale: string; name: string }[]; extraPrice: number }[] }[] }).optionGroups || [];
           for (const sel of item.selectedOptions) {
@@ -306,9 +327,11 @@ export function createOrdersRouter(io: SocketIOServer): Router {
             if (group) {
               const choice = group.choices.find((c) => c._id.toString() === sel.choiceId);
               if (choice) {
-                const groupName = group.translations && group.translations.length > 0 ? group.translations[0].name : '';
-                const choiceName = choice.translations && choice.translations.length > 0 ? choice.translations[0].name : '';
-                selectedOptions.push({ groupName, choiceName, extraPrice: choice.extraPrice || 0 });
+                const groupName = choice.translations.find((t: { locale: string }) => t.locale === 'zh-CN')?.name || group.translations[0]?.name || '';
+                const groupNameEn = group.translations.find((t: { locale: string }) => t.locale === 'en-US')?.name || groupName;
+                const choiceName = choice.translations.find((t: { locale: string }) => t.locale === 'zh-CN')?.name || choice.translations[0]?.name || '';
+                const choiceNameEn = choice.translations.find((t: { locale: string }) => t.locale === 'en-US')?.name || choiceName;
+                selectedOptions.push({ groupName, groupNameEn, choiceName, choiceNameEn, extraPrice: choice.extraPrice || 0 });
               }
             }
           }

@@ -5,7 +5,7 @@ import { useCart } from '../../context/CartContext';
 import type { CartItem } from '../../context/CartContext';
 import PaymentModal from '../../components/customer/PaymentModal';
 
-interface OrderItem { _id: string; menuItemId: string; quantity: number; unitPrice: number; itemName: string; selectedOptions?: { groupName: string; choiceName: string; extraPrice: number }[]; }
+interface OrderItem { _id: string; menuItemId: string; quantity: number; unitPrice: number; itemName: string; itemNameEn?: string; selectedOptions?: { groupName: string; groupNameEn?: string; choiceName: string; choiceNameEn?: string; extraPrice: number }[]; }
 interface AppliedBundle { offerId?: string; name: string; nameEn?: string; discount: number; }
 interface Order {
   _id: string; type: string; tableNumber?: number; seatNumber?: number;
@@ -17,7 +17,8 @@ export default function OrderStatusPage() {
   const { orderId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const { clearCart, setItems, setEditOrderId } = useCart();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,20 +41,69 @@ export default function OrderStatusPage() {
     return s + (i.unitPrice + optExtra) * i.quantity;
   }, 0);
 
-  const handleModifyOrder = () => {
+  const handleModifyOrder = async () => {
     if (!order) return;
-    // Load order items into cart
-    const cartItems: CartItem[] = order.items.map(item => ({
-      menuItemId: item.menuItemId,
-      names: { 'zh-CN': item.itemName, 'en-US': item.itemName }, // snapshot name for both
-      price: item.unitPrice,
-      quantity: item.quantity,
-    }));
-    clearCart();
-    setItems(cartItems);
-    setEditOrderId(order._id);
-    // Navigate to menu so user can add/remove items
-    navigate(`/customer/menu?${qs}`);
+    try {
+      // Fetch menu items to resolve groupId/choiceId from stored groupName/choiceName
+      const menuRes = await fetch('/api/menu/items');
+      const menuItems: {
+        _id: string;
+        optionGroups?: {
+          _id: string;
+          translations: { locale: string; name: string }[];
+          choices: { _id: string; extraPrice: number; translations: { locale: string; name: string }[] }[];
+        }[];
+      }[] = menuRes.ok ? await menuRes.json() : [];
+      const menuMap = new Map(menuItems.map(m => [m._id, m]));
+
+      const cartItems: CartItem[] = order.items.map(item => {
+        const menuItem = menuMap.get(item.menuItemId);
+        const options: CartItem['options'] = [];
+
+        if (item.selectedOptions && item.selectedOptions.length > 0 && menuItem?.optionGroups) {
+          for (const sel of item.selectedOptions) {
+            // Find matching group by name
+            const group = menuItem.optionGroups.find(g =>
+              g.translations.some(t2 => t2.name === sel.groupName)
+            );
+            if (group) {
+              // Find matching choice by name
+              const choice = group.choices.find(c =>
+                c.translations.some(t2 => t2.name === sel.choiceName)
+              );
+              if (choice) {
+                const groupNames: Record<string, string> = {};
+                for (const t2 of group.translations) groupNames[t2.locale] = t2.name;
+                const choiceNames: Record<string, string> = {};
+                for (const t2 of choice.translations) choiceNames[t2.locale] = t2.name;
+                options.push({
+                  groupId: group._id,
+                  choiceId: choice._id,
+                  groupName: groupNames,
+                  choiceName: choiceNames,
+                  extraPrice: choice.extraPrice || 0,
+                });
+              }
+            }
+          }
+        }
+
+        return {
+          menuItemId: item.menuItemId,
+          names: { 'zh-CN': item.itemName, 'en-US': item.itemNameEn || item.itemName },
+          price: item.unitPrice,
+          quantity: item.quantity,
+          options: options.length > 0 ? options : undefined,
+        };
+      });
+
+      clearCart();
+      setItems(cartItems);
+      setEditOrderId(order._id);
+      navigate(`/customer/menu?${qs}`);
+    } catch {
+      navigate(`/customer/menu?${qs}`);
+    }
   };
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-light)' }}>{t('customer.loadingOrder')}</div>;
@@ -99,11 +149,14 @@ export default function OrderStatusPage() {
             borderBottom: '1px solid #f0f0f0',
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{item.itemName}</div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{lang === 'en-US' && item.itemNameEn ? item.itemNameEn : item.itemName}</div>
               {item.selectedOptions && item.selectedOptions.length > 0 && (
                 <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2 }}>
                   {item.selectedOptions.map((o, i) => (
-                    <span key={i}>{i > 0 && ' · '}{o.groupName}: {o.choiceName}{o.extraPrice > 0 && ` +€${o.extraPrice}`}</span>
+                    <span key={i}>{i > 0 && ' · '}
+                      {lang === 'en-US' ? (o.groupNameEn || o.groupName) : o.groupName}: {lang === 'en-US' ? (o.choiceNameEn || o.choiceName) : o.choiceName}
+                      {o.extraPrice > 0 && ` +€${o.extraPrice}`}
+                    </span>
                   ))}
                 </div>
               )}
@@ -164,17 +217,42 @@ export default function OrderStatusPage() {
                 {t('customer.backToMenu')}
               </button>
             </div>
+            <button
+              onClick={async () => {
+                if (!confirm(t('customer.confirmCancel'))) return;
+                try {
+                  const res = await fetch(`/api/orders/${order._id}`, { method: 'DELETE' });
+                  if (res.ok) navigate(`/customer/menu?${qs}`, { replace: true });
+                } catch { /* ignore */ }
+              }}
+              style={{
+                width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600,
+                background: 'none', border: '1px dashed #F44336', borderRadius: 10,
+                color: '#F44336', cursor: 'pointer',
+              }}>
+              ✕ {t('customer.cancelOrder')}
+            </button>
           </>
         )}
-        {!isPending && !isPaidOnline && (
-          <p style={{ color: 'var(--text-light)', fontSize: 13, textAlign: 'center', width: '100%' }}>
-            {t('customer.orderNotModifiable')}
-          </p>
-        )}
         {isPaidOnline && (
-          <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate(`/customer/menu?${qs}`)}>
-            {t('customer.backToMenu')}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '12px 16px', background: '#E8F5E9', border: '2px solid #4CAF50', borderRadius: 10, textAlign: 'center', fontSize: 14, color: '#2E7D32', fontWeight: 600 }}>
+              ✅ {t('customer.paymentSuccess')}
+            </div>
+            <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate(`/customer/menu?${qs}`)}>
+              {t('customer.backToMenu')}
+            </button>
+          </div>
+        )}
+        {!isPending && !isPaidOnline && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <p style={{ color: 'var(--text-light)', fontSize: 13, textAlign: 'center', width: '100%' }}>
+              {t('customer.orderNotModifiable')}
+            </p>
+            <button className="btn btn-outline" style={{ width: '100%' }} onClick={() => navigate(`/customer/menu?${qs}`)}>
+              {t('customer.backToMenu')}
+            </button>
+          </div>
         )}
       </div>
 

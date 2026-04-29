@@ -214,6 +214,9 @@ router.get('/detailed', authMiddleware, requirePermission('report:view'), async 
           } else if (checkout.paymentMethod === 'mixed') {
             mixedTotal += checkout.totalAmount;
             mixedCount++;
+            // Also add mixed cash/card parts into cashTotal/cardTotal
+            cashTotal += checkout.cashAmount || 0;
+            cardTotal += checkout.cardAmount || 0;
             grossCashAmount += checkout.cashAmount || 0;
             grossCardAmount += checkout.cardAmount || 0;
           } else if (checkout.paymentMethod === 'online') {
@@ -291,7 +294,15 @@ router.get('/detailed', authMiddleware, requirePermission('report:view'), async 
       refundedAmount += amt;
       if (pm === 'cash') cashRefund += amt;
       else if (pm === 'card') cardRefund += amt;
-      else if (pm === 'mixed') mixedRefund += amt;
+      else if (pm === 'mixed') {
+        // Split mixed refund proportionally between cash and card
+        const mixedTotal2 = checkout ? (checkout.totalAmount || 1) : 1;
+        const cashRatio = checkout ? (checkout.cashAmount || 0) / mixedTotal2 : 0;
+        const cardRatio = checkout ? (checkout.cardAmount || 0) / mixedTotal2 : 0;
+        cashRefund += amt * cashRatio;
+        cardRefund += amt * cardRatio;
+        mixedRefund += amt;
+      }
       else if (pm === 'online') onlineRefund += amt;
     }
 

@@ -56,6 +56,8 @@
     "modifyOrder": "Modify Order",
     "saveChanges": "Save Changes",
     "cancelEdit": "Cancel",
+    "cancelOrder": "Cancel Order",
+    "confirmCancel": "Cancel this order?",
     "orderNotModifiable": "Order is checked out and cannot be modified",
     "quantity": "Qty",
     "unitPrice": "Unit Price",

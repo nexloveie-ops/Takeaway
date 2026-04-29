@@ -8,7 +8,9 @@ const OrderItemSubdocSchema = new mongoose.Schema({
   itemNameEn: { type: String, default: '' },
   selectedOptions: [{
     groupName: { type: String },
+    groupNameEn: { type: String, default: '' },
     choiceName: { type: String },
+    choiceNameEn: { type: String, default: '' },
     extraPrice: { type: Number, default: 0 },
   }],
   refunded: { type: Boolean, default: false },

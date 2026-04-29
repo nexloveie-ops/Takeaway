@@ -56,6 +56,8 @@
     "modifyOrder": "修改订单",
     "saveChanges": "保存修改",
     "cancelEdit": "取消修改",
+    "cancelOrder": "取消订单",
+    "confirmCancel": "确认取消此订单？",
     "orderNotModifiable": "订单已结账，无法修改",
     "quantity": "数量",
     "unitPrice": "单价",

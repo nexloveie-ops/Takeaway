@@ -3,7 +3,13 @@ import { initReactI18next } from 'react-i18next';
 import enUS from './locales/en-US.json';
 import zhCN from './locales/zh-CN.json';
 
-const savedLanguage = localStorage.getItem('language') || 'zh-CN';
+// Default language is en-US. Clear any previously saved zh-CN default.
+if (!localStorage.getItem('language_v2')) {
+  // First time with new default — reset to en-US
+  localStorage.setItem('language', 'en-US');
+  localStorage.setItem('language_v2', '1');
+}
+const savedLanguage = localStorage.getItem('language') || 'en-US';
 
 i18n.use(initReactI18next).init({
   resources: {
@@ -11,7 +17,7 @@ i18n.use(initReactI18next).init({
     'zh-CN': { translation: zhCN },
   },
   lng: savedLanguage,
-  fallbackLng: 'zh-CN',
+  fallbackLng: 'en-US',
   interpolation: {
     escapeValue: false,
   },
