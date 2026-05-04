@@ -21,6 +21,7 @@ const sidebarItems = [
   { path: '/admin/business-hours', icon: '🕒', key: 'admin.businessHours' },
   { path: '/admin/users', icon: '👥', key: 'admin.users' },
   { path: '/admin/config', icon: '⚙️', key: 'admin.systemConfig' },
+  { path: '/admin/stripe', icon: '💳', key: 'admin.stripeSettings' },
 ];
 
 export default function AdminLayout() {

@@ -1,14 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
-import Stripe from 'stripe';
 import { Server as SocketIOServer } from 'socket.io';
 import { Order } from '../models/Order';
 import { Checkout } from '../models/Checkout';
 import { createAppError } from '../middleware/errorHandler';
-
-function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY || '');
-}
+import { createStripeClient, getStripePublishableResolved } from '../utils/stripeConfig';
 
 export function createPaymentsRouter(io: SocketIOServer): Router {
   const router = Router();
@@ -38,7 +34,7 @@ router.post('/create-intent', async (req: Request, res: Response, next: NextFunc
 
     if (totalAmount <= 0) throw createAppError('VALIDATION_ERROR', 'Order total must be greater than 0');
 
-    const stripe = getStripe();
+    const stripe = await createStripeClient();
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalAmount,
       currency: 'eur',
@@ -71,7 +67,7 @@ router.post('/confirm', async (req: Request, res: Response, next: NextFunction) 
       return;
     }
 
-    const stripe = getStripe();
+    const stripe = await createStripeClient();
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (paymentIntent.status !== 'succeeded') {
       throw createAppError('VALIDATION_ERROR', 'Payment not completed');
@@ -95,8 +91,13 @@ router.post('/confirm', async (req: Request, res: Response, next: NextFunction) 
 /**
  * GET /api/payments/config
  */
-router.get('/config', (_req: Request, res: Response) => {
-  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '' });
+router.get('/config', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const publishableKey = await getStripePublishableResolved();
+    res.json({ publishableKey });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**

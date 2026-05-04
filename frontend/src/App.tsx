@@ -31,6 +31,7 @@ import RestaurantInfo from './pages/admin/RestaurantInfo';
 import OfferManager from './pages/admin/OfferManager';
 import CouponManager from './pages/admin/CouponManager';
 import BusinessHours from './pages/admin/BusinessHours';
+import StripeSettings from './pages/admin/StripeSettings';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="business-hours" element={<BusinessHours />} />
             <Route path="users" element={<UserManager />} />
             <Route path="config" element={<SystemConfig />} />
+            <Route path="stripe" element={<StripeSettings />} />
             <Route path="offers" element={<OfferManager />} />
             <Route path="coupons" element={<CouponManager />} />
           </Route>

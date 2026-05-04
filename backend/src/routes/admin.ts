@@ -10,6 +10,13 @@ import { authMiddleware, requirePermission } from '../middleware/auth';
 import { createAppError } from '../middleware/errorHandler';
 import { uploadFile } from '../storage';
 import { getBusinessStatus } from '../utils/businessHours';
+import {
+  getStripePublishableFromDbOnly,
+  hasStripeSecretInDb,
+  STRIPE_KEYS_FILTER_FROM_PUBLIC_CONFIG,
+  STRIPE_PUBLISHABLE_CONFIG_KEY,
+  STRIPE_SECRET_CONFIG_KEY,
+} from '../utils/stripeConfig';
 
 const router = Router();
 const tempUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -17,12 +24,13 @@ const UPLOAD_BASE = path.resolve(__dirname, '../../uploads');
 const LOGO_DIR = path.join(UPLOAD_BASE, 'logo');
 fs.mkdirSync(LOGO_DIR, { recursive: true });
 
-// GET /api/admin/config — Get all system configs
+// GET /api/admin/config — Get all system configs (Stripe keys never included — use GET /stripe-config for admin)
 router.get('/config', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const configs = await SystemConfig.find({}).lean();
     const configMap: Record<string, string> = {};
     for (const c of configs) {
+      if (STRIPE_KEYS_FILTER_FROM_PUBLIC_CONFIG.has(c.key)) continue;
       configMap[c.key] = c.value;
     }
     res.json(configMap);
@@ -51,6 +59,9 @@ router.put('/config', authMiddleware, requirePermission('config:update'), async 
 
     const results: Record<string, string> = {};
     for (const [key, value] of Object.entries(updates)) {
+      if (STRIPE_KEYS_FILTER_FROM_PUBLIC_CONFIG.has(key)) {
+        continue;
+      }
       if (typeof value !== 'string') {
         throw createAppError('VALIDATION_ERROR', `Value for key "${key}" must be a string`);
       }
@@ -63,6 +74,55 @@ router.put('/config', authMiddleware, requirePermission('config:update'), async 
     }
 
     res.json(results);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/admin/stripe-config — Admin-only; publishable from DB + whether secret exists (never returns secret)
+router.get('/stripe-config', authMiddleware, requirePermission('config:update'), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const publishableKey = await getStripePublishableFromDbOnly();
+    const hasSecret = await hasStripeSecretInDb();
+    res.json({ publishableKey, hasSecret });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/admin/stripe-config — Save Stripe keys to DB (secret optional; never echoed back)
+router.put('/stripe-config', authMiddleware, requirePermission('config:update'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body as { publishableKey?: string; secretKey?: string; clearSecret?: boolean };
+    if (body.publishableKey !== undefined) {
+      if (typeof body.publishableKey !== 'string') {
+        throw createAppError('VALIDATION_ERROR', 'publishableKey must be a string');
+      }
+      const p = body.publishableKey.trim();
+      if (p === '') {
+        await SystemConfig.deleteMany({ key: STRIPE_PUBLISHABLE_CONFIG_KEY });
+      } else {
+        await SystemConfig.findOneAndUpdate(
+          { key: STRIPE_PUBLISHABLE_CONFIG_KEY },
+          { key: STRIPE_PUBLISHABLE_CONFIG_KEY, value: p },
+          { upsert: true, new: true },
+        );
+      }
+    }
+
+    if (body.clearSecret === true) {
+      await SystemConfig.deleteMany({ key: STRIPE_SECRET_CONFIG_KEY });
+    } else if (typeof body.secretKey === 'string' && body.secretKey.length > 0) {
+      await SystemConfig.findOneAndUpdate(
+        { key: STRIPE_SECRET_CONFIG_KEY },
+        { key: STRIPE_SECRET_CONFIG_KEY, value: body.secretKey.trim() },
+        { upsert: true, new: true },
+      );
+    }
+
+    const publishableKey = await getStripePublishableFromDbOnly();
+    const hasSecret = await hasStripeSecretInDb();
+    res.json({ publishableKey, hasSecret, message: 'Saved' });
   } catch (err) {
     next(err);
   }

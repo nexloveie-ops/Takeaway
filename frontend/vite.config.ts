@@ -7,10 +7,12 @@ export default defineConfig({
   server: {
     host: true,
     proxy: {
-      '/api': 'http://localhost:8080',
-      '/uploads': 'http://localhost:8080',
+      // Use 127.0.0.1 so dev proxy always hits the same stack as `npm run dev` (localhost / IPv6 mismatch can break /api and surface as 404)
+      '/api': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/uploads': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/socket.io': {
-        target: 'http://localhost:8080',
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
         ws: true,
       },
     },
