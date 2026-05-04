@@ -6,14 +6,15 @@ interface Translation { locale: string; name: string; }
 interface Category { _id: string; translations: Translation[]; }
 interface MenuItemRow { _id: string; categoryId: string; price: number; translations: Translation[]; }
 
-interface OptionChoiceData { extraPrice: number; originalPrice?: number; translations: Translation[]; }
-interface OptionGroupData { required: boolean; translations: Translation[]; choices: OptionChoiceData[]; }
+interface OptionChoiceData { extraPrice?: number; originalPrice?: number; translations?: Translation[]; }
+interface OptionGroupData { required?: boolean; translations?: Translation[]; choices?: OptionChoiceData[]; }
 
 interface TemplateDoc {
   _id: string;
   name: string;
   enabled: boolean;
-  optionGroups: OptionGroupData[];
+  /** API may omit or shape differently until detail fetch */
+  optionGroups?: unknown;
   updatedAt?: string;
 }
 
@@ -32,6 +33,19 @@ interface FormOptionGroup { nameZh: string; nameEn: string; required: boolean; c
 
 const emptyTemplateForm = { _id: null as string | null, name: '', enabled: true, optionGroups: [] as FormOptionGroup[] };
 
+/** Normalize Mongo _id from JSON (string or rare ObjectId / EJSON). */
+function templateIdString(id: unknown): string {
+  if (typeof id === 'string') return id;
+  if (id && typeof id === 'object' && '$oid' in (id as Record<string, unknown>)) {
+    return String((id as { $oid: string }).$oid);
+  }
+  if (id != null && typeof (id as { toString?: () => string }).toString === 'function') {
+    const s = (id as { toString: () => string }).toString();
+    if (/^[a-f0-9]{24}$/i.test(s)) return s;
+  }
+  return id != null ? String(id) : '';
+}
+
 const emptyRuleForm = {
   _id: null as string | null,
   templateId: '',
@@ -42,18 +56,166 @@ const emptyRuleForm = {
   excludedMenuItemIds: [] as string[],
 };
 
-function toFormGroups(groups: OptionGroupData[] | undefined): FormOptionGroup[] {
-  return (groups || []).map((g) => ({
-    nameZh: g.translations.find((t) => t.locale === 'zh-CN')?.name || '',
-    nameEn: g.translations.find((t) => t.locale === 'en-US')?.name || '',
-    required: !!g.required,
-    choices: (g.choices || []).map((c) => ({
-      nameZh: c.translations.find((t) => t.locale === 'zh-CN')?.name || '',
-      nameEn: c.translations.find((t) => t.locale === 'en-US')?.name || '',
-      extraPrice: typeof c.extraPrice === 'number' ? c.extraPrice : 0,
-      originalPrice: typeof c.originalPrice === 'number' ? c.originalPrice : 0,
-    })),
-  }));
+/** Accept translation array or locale→name map from API / legacy data */
+function normalizeTranslationsArray(raw: unknown): Translation[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((x): x is { locale?: unknown; name?: unknown } => x != null && typeof x === 'object')
+      .map((x) => ({ locale: String(x.locale ?? ''), name: String(x.name ?? '') }))
+      .filter((x) => x.locale);
+  }
+  if (typeof raw === 'object') {
+    return Object.entries(raw as Record<string, unknown>).map(([locale, v]) => ({
+      locale,
+      name:
+        typeof v === 'string'
+          ? v
+          : v != null && typeof v === 'object' && 'name' in (v as object)
+            ? String((v as { name: unknown }).name ?? '')
+            : String(v ?? ''),
+    }));
+  }
+  return [];
+}
+
+function pickZhEnNames(tr: Translation[]): { nameZh: string; nameEn: string } {
+  const list = tr;
+  const byExact = (locales: string[]) => {
+    for (const loc of locales) {
+      const x = list.find((t) => t.locale === loc);
+      const n = (x?.name ?? '').trim();
+      if (n) return n;
+    }
+    return '';
+  };
+  let nameZh = byExact(['zh-CN', 'zh_CN', 'zh-Hans', 'zh']);
+  if (!nameZh) {
+    const z = list.find((t) => (t.locale || '').toLowerCase().startsWith('zh'));
+    nameZh = (z?.name ?? '').trim();
+  }
+  if (!nameZh) nameZh = (list[0]?.name ?? '').trim();
+
+  let nameEn = byExact(['en-US', 'en_GB', 'en']);
+  if (!nameEn) {
+    const e = list.find((t) => (t.locale || '').toLowerCase().startsWith('en'));
+    nameEn = (e?.name ?? '').trim();
+  }
+  if (!nameEn) {
+    const nonZh = list.find((t) => !(t.locale || '').toLowerCase().startsWith('zh'));
+    nameEn = (nonZh?.name ?? '').trim();
+  }
+  if (!nameEn) nameEn = (list[1]?.name ?? '').trim();
+
+  return { nameZh, nameEn };
+}
+
+function isGroupLikeObject(x: unknown): x is Record<string, unknown> {
+  return (
+    x != null &&
+    typeof x === 'object' &&
+    !Array.isArray(x) &&
+    ('translations' in (x as object) || 'choices' in (x as object) || 'required' in (x as object))
+  );
+}
+
+/**
+ * Mongo / legacy saves sometimes nest as [[{ group }]] instead of [{ group }].
+ * Flatten until we have a list of group-shaped objects.
+ */
+function unwrapOptionGroupRows(rows: unknown[]): unknown[] {
+  function inner(rs: unknown[]): unknown[] {
+    const out: unknown[] = [];
+    for (const row of rs) {
+      if (!Array.isArray(row)) {
+        if (isGroupLikeObject(row)) out.push(row);
+        continue;
+      }
+      if (row.length === 0) continue;
+      if (row.every(isGroupLikeObject)) {
+        out.push(...row);
+        continue;
+      }
+      out.push(...inner(row));
+    }
+    return out;
+  }
+  return inner(rows);
+}
+
+/** Coerce API / DB optionGroups into a stable shape (arrays, locale fallbacks, numeric-key objects). */
+function coerceOptionGroupsFromApi(raw: unknown): OptionGroupData[] {
+  if (raw == null) return [];
+  let rows: unknown[] = [];
+  if (Array.isArray(raw)) rows = raw;
+  else if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    const keys = Object.keys(o)
+      .filter((k) => /^\d+$/.test(k))
+      .sort((a, b) => Number(a) - Number(b));
+    rows = keys.length > 0 ? keys.map((k) => o[k]) : [];
+  } else return [];
+
+  rows = unwrapOptionGroupRows(rows);
+
+  const out: OptionGroupData[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const g = row as Record<string, unknown>;
+    let translations = normalizeTranslationsArray(g.translations);
+    if (translations.length === 0 && (typeof g.nameZh === 'string' || typeof g.nameEn === 'string')) {
+      translations = [
+        { locale: 'zh-CN', name: String(g.nameZh ?? '') },
+        { locale: 'en-US', name: String(g.nameEn ?? '') },
+      ];
+    }
+    let choicesIn: unknown[] = [];
+    if (Array.isArray(g.choices)) choicesIn = g.choices;
+    else if (g.choices && typeof g.choices === 'object') {
+      const c = g.choices as Record<string, unknown>;
+      const ck = Object.keys(c)
+        .filter((k) => /^\d+$/.test(k))
+        .sort((a, b) => Number(a) - Number(b));
+      if (ck.length > 0) choicesIn = ck.map((k) => c[k]);
+    }
+    const choices: OptionChoiceData[] = choicesIn
+      .filter((c) => c != null && typeof c === 'object')
+      .map((c) => {
+        const ch = c as Record<string, unknown>;
+        let ctr = normalizeTranslationsArray(ch.translations);
+        if (ctr.length === 0 && (typeof ch.nameZh === 'string' || typeof ch.nameEn === 'string')) {
+          ctr = [
+            { locale: 'zh-CN', name: String(ch.nameZh ?? '') },
+            { locale: 'en-US', name: String(ch.nameEn ?? '') },
+          ];
+        }
+        return {
+          extraPrice: typeof ch.extraPrice === 'number' ? ch.extraPrice : 0,
+          originalPrice: typeof ch.originalPrice === 'number' ? ch.originalPrice : undefined,
+          translations: ctr,
+        };
+      });
+    out.push({ required: !!g.required, translations, choices });
+  }
+  return out;
+}
+
+function toFormGroups(raw: unknown): FormOptionGroup[] {
+  return coerceOptionGroupsFromApi(raw).map((g) => {
+    const { nameZh, nameEn } = pickZhEnNames(g.translations ?? []);
+    let choices = (g.choices ?? []).map((c) => {
+      const names = pickZhEnNames(c.translations ?? []);
+      return {
+        ...names,
+        extraPrice: typeof c.extraPrice === 'number' ? c.extraPrice : 0,
+        originalPrice: typeof c.originalPrice === 'number' ? c.originalPrice : 0,
+      };
+    });
+    if (choices.length === 0) {
+      choices = [{ nameZh: '', nameEn: '', extraPrice: 0, originalPrice: 0 }];
+    }
+    return { nameZh, nameEn, required: !!g.required, choices };
+  });
 }
 
 function fromFormGroups(groups: FormOptionGroup[]): OptionGroupData[] {
@@ -180,7 +342,7 @@ export default function OptionGroupTemplates() {
         optionGroups: fromFormGroups(templateForm.optionGroups),
       };
       const res = templateForm._id
-        ? await fetch(`/api/admin/option-group-templates/${templateForm._id}`, { method: 'PUT', headers, body: JSON.stringify(body) })
+        ? await fetch(`/api/admin/option-group-templates/${encodeURIComponent(templateForm._id)}`, { method: 'PUT', headers, body: JSON.stringify(body) })
         : await fetch('/api/admin/option-group-templates', { method: 'POST', headers, body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -199,7 +361,12 @@ export default function OptionGroupTemplates() {
 
   const deleteTemplate = async (id: string) => {
     if (!confirm(t('common.confirm') + '?')) return;
-    await fetch(`/api/admin/option-group-templates/${id}`, { method: 'DELETE', headers });
+    const res = await fetch(`/api/admin/option-group-templates/${encodeURIComponent(id)}`, { method: 'DELETE', headers });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      alert(data?.error?.message || t('common.error'));
+      return;
+    }
     setTemplateForm(emptyTemplateForm);
     setTemplateEditorOpen(false);
     fetchAll();
@@ -227,7 +394,7 @@ export default function OptionGroupTemplates() {
         excludedMenuItemIds: ruleForm.excludedMenuItemIds,
       };
       const res = ruleForm._id
-        ? await fetch(`/api/admin/option-group-templates/rules/${ruleForm._id}`, { method: 'PUT', headers, body: JSON.stringify(body) })
+        ? await fetch(`/api/admin/option-group-templates/rules/${encodeURIComponent(ruleForm._id)}`, { method: 'PUT', headers, body: JSON.stringify(body) })
         : await fetch('/api/admin/option-group-templates/rules', { method: 'POST', headers, body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -246,7 +413,12 @@ export default function OptionGroupTemplates() {
 
   const deleteRule = async (id: string) => {
     if (!confirm(t('common.confirm') + '?')) return;
-    await fetch(`/api/admin/option-group-templates/rules/${id}`, { method: 'DELETE', headers });
+    const res = await fetch(`/api/admin/option-group-templates/rules/${encodeURIComponent(id)}`, { method: 'DELETE', headers });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      alert(data?.error?.message || t('common.error'));
+      return;
+    }
     setRuleForm(emptyRuleForm);
     setRuleEditorOpen(false);
     fetchAll();
@@ -274,12 +446,34 @@ export default function OptionGroupTemplates() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           {templates.map((tpl) => (
             <button
-              key={tpl._id}
+              key={templateIdString(tpl._id)}
               className="btn btn-ghost"
               style={{ fontSize: 12, border: '1px solid var(--border)', borderRadius: 999, padding: '6px 10px' }}
-              onClick={() => {
-                setTemplateForm({ _id: tpl._id, name: tpl.name, enabled: tpl.enabled, optionGroups: toFormGroups(tpl.optionGroups) });
+              onClick={async () => {
+                const tid = templateIdString(tpl._id);
+                if (!tid) return;
                 setTemplateEditorOpen(true);
+                setTemplateForm({
+                  _id: tid,
+                  name: tpl.name,
+                  enabled: tpl.enabled,
+                  optionGroups: toFormGroups(tpl.optionGroups),
+                });
+                try {
+                  const res = await fetch(`/api/admin/option-group-templates/${encodeURIComponent(tid)}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  if (!res.ok) return;
+                  const data = (await res.json()) as { name?: string; enabled?: boolean; optionGroups?: unknown };
+                  setTemplateForm({
+                    _id: tid,
+                    name: typeof data.name === 'string' ? data.name : tpl.name,
+                    enabled: typeof data.enabled === 'boolean' ? data.enabled : tpl.enabled,
+                    optionGroups: toFormGroups(data.optionGroups),
+                  });
+                } catch {
+                  /* keep list snapshot */
+                }
               }}
             >
               {tpl.name}{tpl.enabled ? '' : ` (${t('admin.enabledOff')})`}
@@ -377,7 +571,7 @@ export default function OptionGroupTemplates() {
             style={{ fontSize: 12 }}
             disabled={templates.length === 0}
             onClick={() => {
-              setRuleForm({ ...emptyRuleForm, templateId: templates[0]?._id || '' });
+              setRuleForm({ ...emptyRuleForm, templateId: templateIdString(templates[0]?._id) });
               setRuleEditorOpen(true);
             }}
           >
@@ -400,9 +594,10 @@ export default function OptionGroupTemplates() {
             </thead>
             <tbody>
               {rules.map((r) => {
-                const tplName = templates.find((x) => x._id === r.templateId)?.name || r.templateId;
+                const rid = templateIdString(r.templateId);
+                const tplName = templates.find((x) => templateIdString(x._id) === rid)?.name || rid;
                 return (
-                  <tr key={r._id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <tr key={templateIdString(r._id)} style={{ borderBottom: '1px solid #f0f0f0' }}>
                     <td style={{ padding: 8 }}>{r.priority}</td>
                     <td style={{ padding: 8 }}>{tplName}</td>
                     <td style={{ padding: 8 }}>{r.categoryIds.length}</td>
@@ -412,8 +607,8 @@ export default function OptionGroupTemplates() {
                     <td style={{ padding: 8, textAlign: 'right' }}>
                       <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => {
                         setRuleForm({
-                          _id: r._id,
-                          templateId: r.templateId,
+                          _id: templateIdString(r._id),
+                          templateId: templateIdString(r.templateId),
                           enabled: r.enabled,
                           priority: r.priority,
                           categoryIds: r.categoryIds || [],
@@ -422,7 +617,7 @@ export default function OptionGroupTemplates() {
                         });
                         setRuleEditorOpen(true);
                       }}>{t('common.edit')}</button>
-                      <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--red-primary)' }} onClick={() => deleteRule(r._id)}>{t('common.delete')}</button>
+                      <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--red-primary)' }} onClick={() => deleteRule(templateIdString(r._id))}>{t('common.delete')}</button>
                     </td>
                   </tr>
                 );
@@ -441,7 +636,10 @@ export default function OptionGroupTemplates() {
                 <label style={{ fontSize: 12, color: 'var(--text-light)' }}>{t('admin.template')}</label>
                 <select className="input" value={ruleForm.templateId} onChange={(e) => setRuleForm((p) => ({ ...p, templateId: e.target.value }))}>
                   <option value="">{t('admin.pickTemplate')}</option>
-                  {templates.map((tpl) => <option key={tpl._id} value={tpl._id}>{tpl.name}</option>)}
+                  {templates.map((tpl) => {
+                    const optId = templateIdString(tpl._id);
+                    return <option key={optId} value={optId}>{tpl.name}</option>;
+                  })}
                 </select>
               </div>
               <div>

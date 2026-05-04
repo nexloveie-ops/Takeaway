@@ -5,6 +5,37 @@ export type LeanTranslation = { locale: string; name: string };
 export type LeanChoice = { _id?: mongoose.Types.ObjectId; extraPrice?: number; originalPrice?: number; translations: LeanTranslation[] };
 export type LeanOptionGroup = { _id?: mongoose.Types.ObjectId; required?: boolean; translations: LeanTranslation[]; choices: LeanChoice[] };
 
+function isGroupLikeRecord(x: unknown): boolean {
+  return (
+    x != null &&
+    typeof x === 'object' &&
+    !Array.isArray(x) &&
+    ('translations' in (x as object) || 'choices' in (x as object) || 'required' in (x as object))
+  );
+}
+
+/** Flatten mistaken [[{...}]] storage to [{...}] so clone/validation see real groups. */
+export function normalizeNestedOptionGroups(raw: unknown): LeanOptionGroup[] {
+  if (!Array.isArray(raw)) return [];
+  function unwrap(rs: unknown[]): LeanOptionGroup[] {
+    const out: LeanOptionGroup[] = [];
+    for (const row of rs) {
+      if (!Array.isArray(row)) {
+        if (isGroupLikeRecord(row)) out.push(row as LeanOptionGroup);
+        continue;
+      }
+      if (row.length === 0) continue;
+      if (row.every((x) => isGroupLikeRecord(x))) {
+        out.push(...(row as LeanOptionGroup[]));
+        continue;
+      }
+      out.push(...unwrap(row as unknown[]));
+    }
+    return out;
+  }
+  return unwrap(raw);
+}
+
 function assertTranslationArray(translations: unknown, label: string): translations is LeanTranslation[] {
   if (!Array.isArray(translations) || translations.length === 0) {
     throw createAppError('VALIDATION_ERROR', `${label}: translations must be a non-empty array`);
@@ -52,7 +83,8 @@ export function validateOptionGroups(optionGroups: unknown): asserts optionGroup
 }
 
 export function cloneOptionGroupsWithNewIds(groups: LeanOptionGroup[]): LeanOptionGroup[] {
-  return (groups || []).map((g) => ({
+  const flat = normalizeNestedOptionGroups(groups);
+  return flat.map((g) => ({
     _id: new mongoose.Types.ObjectId(),
     required: !!g.required,
     translations: (g.translations || []).map((t) => ({ locale: t.locale, name: t.name })),

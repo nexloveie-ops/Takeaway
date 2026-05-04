@@ -38,6 +38,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Admin APIs require owner-level permissions (e.g. menu:write); block cashier from /admin URLs. */
+function RequireOwner({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'owner') return <Navigate to="/cashier" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -66,8 +74,8 @@ export default function App() {
             <Route path="checkout/seat/:orderId" element={<CheckoutFlow />} />
           </Route>
 
-          {/* Admin routes — require auth */}
-          <Route path="/admin" element={<RequireAuth><AdminLayout /></RequireAuth>}>
+          {/* Admin routes — owner only (matches backend menu:write / config:update, etc.) */}
+          <Route path="/admin" element={<RequireOwner><AdminLayout /></RequireOwner>}>
             <Route index element={<CategoryManager />} />
             <Route path="restaurant" element={<RestaurantInfo />} />
             <Route path="categories" element={<CategoryManager />} />

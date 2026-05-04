@@ -4,7 +4,7 @@ import { OptionGroupTemplate } from '../models/OptionGroupTemplate';
 import { OptionGroupTemplateRule } from '../models/OptionGroupTemplateRule';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { createAppError } from '../middleware/errorHandler';
-import { validateOptionGroups } from '../utils/optionGroups';
+import { normalizeNestedOptionGroups, validateOptionGroups } from '../utils/optionGroups';
 
 const router = Router();
 
@@ -54,12 +54,13 @@ router.post(
       if (!name || typeof name !== 'string') {
         throw createAppError('VALIDATION_ERROR', 'name is required');
       }
-      validateOptionGroups(optionGroups);
+      const flatGroups = optionGroups === undefined ? [] : normalizeNestedOptionGroups(optionGroups);
+      validateOptionGroups(flatGroups);
 
       const tpl = await OptionGroupTemplate.create({
         name: name.trim(),
         enabled: typeof enabled === 'boolean' ? enabled : true,
-        optionGroups: optionGroups || [],
+        optionGroups: flatGroups,
       });
       res.status(201).json(tpl);
     } catch (err) {
@@ -68,73 +69,7 @@ router.post(
   },
 );
 
-router.put(
-  '/:id',
-  authMiddleware,
-  requirePermission('menu:write'),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const id = req.params.id as string;
-      parseObjectId(id, 'template id');
-
-      const { name, enabled, optionGroups } = req.body;
-      const update: Record<string, unknown> = {};
-      if (name !== undefined) {
-        if (typeof name !== 'string' || !name.trim()) {
-          throw createAppError('VALIDATION_ERROR', 'name must be a non-empty string');
-        }
-        update.name = name.trim();
-      }
-      if (enabled !== undefined) {
-        if (typeof enabled !== 'boolean') {
-          throw createAppError('VALIDATION_ERROR', 'enabled must be a boolean');
-        }
-        update.enabled = enabled;
-      }
-      if (optionGroups !== undefined) {
-        validateOptionGroups(optionGroups);
-        update.optionGroups = optionGroups;
-      }
-
-      if (Object.keys(update).length === 0) {
-        throw createAppError('VALIDATION_ERROR', 'No fields to update');
-      }
-
-      const updated = await OptionGroupTemplate.findByIdAndUpdate(id, update, { new: true, runValidators: true });
-      if (!updated) {
-        throw createAppError('NOT_FOUND', 'Template not found');
-      }
-      res.json(updated);
-    } catch (err) {
-      next(err);
-    }
-  },
-);
-
-router.delete(
-  '/:id',
-  authMiddleware,
-  requirePermission('menu:write'),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const id = req.params.id as string;
-      parseObjectId(id, 'template id');
-
-      const deleted = await OptionGroupTemplate.findByIdAndDelete(id);
-      if (!deleted) {
-        throw createAppError('NOT_FOUND', 'Template not found');
-      }
-
-      await OptionGroupTemplateRule.deleteMany({ templateId: id });
-
-      res.json({ message: 'Template deleted and related rules removed' });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
-
-// --- Rules ---
+// --- Rules (register before /:id so paths like /rules are never captured as template id) ---
 
 router.get(
   '/rules',
@@ -283,6 +218,92 @@ router.delete(
         throw createAppError('NOT_FOUND', 'Rule not found');
       }
       res.json({ message: 'Rule deleted' });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.get(
+  '/:id',
+  authMiddleware,
+  requirePermission('menu:write'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      parseObjectId(id, 'template id');
+      const doc = await OptionGroupTemplate.findById(id).lean();
+      if (!doc) {
+        throw createAppError('NOT_FOUND', 'Template not found');
+      }
+      res.json(doc);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.put(
+  '/:id',
+  authMiddleware,
+  requirePermission('menu:write'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      parseObjectId(id, 'template id');
+
+      const { name, enabled, optionGroups } = req.body;
+      const update: Record<string, unknown> = {};
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          throw createAppError('VALIDATION_ERROR', 'name must be a non-empty string');
+        }
+        update.name = name.trim();
+      }
+      if (enabled !== undefined) {
+        if (typeof enabled !== 'boolean') {
+          throw createAppError('VALIDATION_ERROR', 'enabled must be a boolean');
+        }
+        update.enabled = enabled;
+      }
+      if (optionGroups !== undefined) {
+        const flatGroups = normalizeNestedOptionGroups(optionGroups);
+        validateOptionGroups(flatGroups);
+        update.optionGroups = flatGroups;
+      }
+
+      if (Object.keys(update).length === 0) {
+        throw createAppError('VALIDATION_ERROR', 'No fields to update');
+      }
+
+      const updated = await OptionGroupTemplate.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+      if (!updated) {
+        throw createAppError('NOT_FOUND', 'Template not found');
+      }
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.delete(
+  '/:id',
+  authMiddleware,
+  requirePermission('menu:write'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      parseObjectId(id, 'template id');
+
+      const deleted = await OptionGroupTemplate.findByIdAndDelete(id);
+      if (!deleted) {
+        throw createAppError('NOT_FOUND', 'Template not found');
+      }
+
+      await OptionGroupTemplateRule.deleteMany({ templateId: id });
+
+      res.json({ message: 'Template deleted and related rules removed' });
     } catch (err) {
       next(err);
     }
